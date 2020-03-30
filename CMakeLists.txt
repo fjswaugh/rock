@@ -17,7 +17,7 @@ include(FetchContent)
 if (${CMAKE_VERSION} VERSION_LESS 3.14)
     macro(FetchContent_MakeAvailable NAME)
         FetchContent_GetProperties(${NAME})
-        if(NOT ${NAME}_POPULATED)
+        if (NOT ${NAME}_POPULATED)
             FetchContent_Populate(${NAME})
             add_subdirectory(${${NAME}_SOURCE_DIR} ${${NAME}_BINARY_DIR})
         endif()
@@ -28,6 +28,14 @@ endif()
 # For now, we set this to true so that the fmt library works with pybind11
 # Unclear on the reasons, but will investigate further
 set(BUILD_SHARED_LIBS TRUE)
+
+set(CMAKE_CXX_FLAGS "-Wall -Wextra")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native")
+
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GCC")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-semantic-interposition")
+endif()
 
 FetchContent_Declare(
     fmtlib
