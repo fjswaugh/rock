@@ -87,7 +87,7 @@ auto main(int argc, char** argv) -> int
 
     auto rng = std::mt19937{std::random_device{}()};
 
-    if (true)
+    if (false)
     {
         print_random_game(rng);
     }

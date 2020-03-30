@@ -39,10 +39,17 @@ PYBIND11_MODULE(rock, m)
 
     pybind11::class_<rock::BoardPosition>(m, "BoardPosition")
         .def(pybind11::init<>())
+        .def(pybind11::init([](int x, int y) {
+            return rock::BoardPosition{x, y};
+        }))
         .def("__str__", [](rock::BoardPosition x) { return to_string(x); });
 
     pybind11::class_<rock::Move>(m, "Move")
         .def(pybind11::init<>())
+        .def(pybind11::init([](rock::BoardPosition from, rock::BoardPosition to) {
+            return rock::Move{from.data(), to.data()};
+        }))
+        .def_static("from_string", [](std::string const& str) { return rock::parse_move(str); })
         .def("__str__", [](rock::Move x) { return to_string(x); });
 
     pybind11::class_<rock::Board>(m, "Board")
@@ -71,4 +78,7 @@ PYBIND11_MODULE(rock, m)
         "level"_a = 1);
 
     m.def("pick_random_move", &py_pick_random_move, "board"_a, "player"_a);
+
+    m.def("evaluate", &rock::evaluate_position_minmax, "board"_a, "player"_a, "depth"_a = 4);
+    m.def("recommend_move", &rock::recommend_move, "board"_a, "player"_a);
 }
