@@ -29,6 +29,7 @@ def play_interactive_game():
         board.apply_move(human_move)
         ai_move = pick_ai_move(board, rock.Black)
         board.apply_move(ai_move)
+        i += 1
 
     print("Final board:")
     print(board)
