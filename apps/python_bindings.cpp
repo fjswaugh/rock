@@ -3,6 +3,7 @@
 #include <rock/algorithms.h>
 #include <rock/format.h>
 #include <rock/starting_board.h>
+#include <algorithm>
 
 using namespace pybind11::literals;
 
@@ -39,27 +40,49 @@ PYBIND11_MODULE(rock, m)
 
     pybind11::class_<rock::BoardPosition>(m, "BoardPosition")
         .def(pybind11::init<>())
+        .def(pybind11::init(
+            [](std::string const& str) { return rock::parse_board_position(str).value(); }))
         .def(pybind11::init([](int x, int y) {
             return rock::BoardPosition{x, y};
         }))
-        .def("__str__", [](rock::BoardPosition x) { return to_string(x); });
+        .def_static("parse", [](std::string const& str) { return rock::parse_board_position(str); })
+        .def("__str__", [](rock::BoardPosition x) { return to_string(x); })
+        .def("__repr__", [](rock::BoardPosition x) {
+            return fmt::format("rock.BoardPosition('{}')", x);
+        });
 
     pybind11::class_<rock::Move>(m, "Move")
         .def(pybind11::init<>())
+        .def(pybind11::init([](std::string const& str) { return rock::parse_move(str).value(); }))
         .def(pybind11::init([](rock::BoardPosition from, rock::BoardPosition to) {
             return rock::Move{from.data(), to.data()};
         }))
-        .def_static("from_string", [](std::string const& str) { return rock::parse_move(str); })
-        .def("__str__", [](rock::Move x) { return to_string(x); });
+        .def_static("parse", [](std::string const& str) { return rock::parse_move(str); })
+        .def("__str__", [](rock::Move x) { return to_string(x); })
+        .def("__repr__", [](rock::Move x) { return fmt::format("rock.Move('{}')", x); });
 
     pybind11::class_<rock::Board>(m, "Board")
         .def(pybind11::init<>())
         .def("apply_move", &py_apply_move)
+        .def(
+            "winning_player",
+            [](rock::Board const& b) -> std::optional<rock::Color> {
+                return rock::are_pieces_all_together(b.pieces[bool(rock::Color::White)])
+                    ? std::optional{rock::Color::White}
+                    : rock::are_pieces_all_together(b.pieces[bool(rock::Color::Black)])
+                        ? std::optional{rock::Color::Black}
+                        : std::nullopt;
+            })
         .def("__str__", [](rock::Board const& x) { return to_string(x); });
 
     // Functions
 
     m.def("make_starting_board", [] { return rock::starting_board; });
+
+    m.def("is_valid_move", [](rock::Move m, rock::Board const& b, rock::Color p) {
+        auto const all_moves = rock::generate_moves(b, p);
+        return std::find(all_moves.begin(), all_moves.end(), m) != all_moves.end();
+    });
 
     m.def(
         "generate_moves",
