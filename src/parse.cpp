@@ -34,7 +34,7 @@ auto parse_board_position(std::string_view view) -> std::optional<BoardPosition>
 auto parse_move(std::string_view view) -> std::optional<Move>
 {
     auto str = std::string{view};
-    auto const re = std::regex("([a-z] *[0-9])[^a-z]*([a-z] [0-9])", std::regex::icase);
+    auto const re = std::regex("([a-z] *[0-9])[^a-z]*([a-z] *[0-9])", std::regex::icase);
 
     auto matches = std::smatch{};
 

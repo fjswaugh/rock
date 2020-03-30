@@ -52,5 +52,5 @@ FetchContent_MakeAvailable(pybind11)
 add_subdirectory(src)
 add_subdirectory(apps)
 
-# include(CTest)
-# add_subdirectory(test)
+include(CTest)
+add_subdirectory(test)

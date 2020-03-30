@@ -104,6 +104,11 @@ struct Move
 {
     u8 from;
     u8 to;
+
+    constexpr auto friend operator==(Move m1, Move m2) -> bool
+    {
+        return m1.from == m2.from && m1.to == m2.to;
+    }
 };
 
 struct MoveList
