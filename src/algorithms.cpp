@@ -1,29 +1,24 @@
 #include "rock/algorithms.h"
+#include "rock/parse.h"
 #include "table_generation.h"
 
 namespace rock
 {
 
-template <typename T, std::size_t N>
-using array_ref = T const (&)[N];
-
-constexpr auto all_circles = make_all_circles();
-constexpr auto all_directions = make_all_directions();
-
-auto pop_count(u64 x) -> u64
+namespace
 {
-    return __builtin_popcountl(x);
-}
+    template <typename T, std::size_t N>
+    using array_ref = T const (&)[N];
 
-auto position_from_board(u64 x) -> u64
-{
-    return __builtin_ctzl(x);
-}
+    constexpr auto all_circles = make_all_circles();
+    constexpr auto all_directions = make_all_directions();
 
-constexpr auto board_from_position(u8 pos) -> u64
-{
-    return u64(1) << u64(pos);
-}
+    auto pop_count(u64 x) -> u64 { return __builtin_popcountl(x); }
+
+    auto position_from_board(u64 x) -> u64 { return __builtin_ctzl(x); }
+
+    constexpr auto board_from_position(u8 pos) -> u64 { return u64(1) << u64(pos); }
+}  // namespace
 
 auto generate_moves(Board const& board, Color player) -> MoveList
 {
@@ -133,6 +128,81 @@ auto are_pieces_all_together(u64 const board) -> bool
     auto const blob = find_all_neighbours_of(pos_board, board);
 
     return (board ^ blob) == 0;
+}
+
+namespace
+{
+    constexpr std::pair<BitBoard, double> important_positions[] = {
+        {all_circles.data[BoardPosition{3, 3}.data()][3], 1.0},
+        {all_circles.data[BoardPosition{3, 3}.data()][2], 1.0},
+        {all_circles.data[BoardPosition{3, 3}.data()][1], 1.0},
+    };
+}  // namespace
+
+auto evaluate_position_quick(Board const& board, Color player) -> double
+{
+    bool const has_player_won = are_pieces_all_together(board.pieces[bool(player)]);
+    bool const has_player_lost = are_pieces_all_together(board.pieces[!bool(player)]);
+
+    if (has_player_lost || has_player_won)
+        return 1000.0 * (double(has_player_won) - double(has_player_lost));
+
+    auto res = double{};
+
+    for (auto const & [positions, value] : important_positions)
+    {
+        res += value *
+            static_cast<double>(pop_count(positions.data() & board.pieces[bool(player)]));
+        res -= value *
+            static_cast<double>(pop_count(positions.data() & board.pieces[!bool(player)]));
+    }
+
+    return res;
+}
+
+namespace
+{
+    bool is_game_over(Board const& board)
+    {
+        return board.pieces[0] == u64{} || board.pieces[1] == u64{} ||
+            are_pieces_all_together(board.pieces[0]) || are_pieces_all_together(board.pieces[1]);
+    }
+}  // namespace
+
+auto evaluate_position_minmax(Board const& board, Color player, int depth) -> double
+{
+    if (depth == 0 || is_game_over(board))
+        return evaluate_position_quick(board, player);
+
+    auto value = -std::numeric_limits<double>::max();
+    for (auto move : generate_moves(board, player))
+    {
+        auto const move_value = -evaluate_position_minmax(
+            apply_move(move, board, player), Color{!bool(player)}, depth - 1);
+        value = std::max(value, move_value);
+    }
+    return value;
+}
+
+auto recommend_move(Board const& board, Color player) -> Move
+{
+    auto best_move = Move{};
+    auto best_score = -std::numeric_limits<double>::max();
+
+    auto const all_moves = generate_moves(board, player);
+    for (auto const move : all_moves)
+    {
+        auto const test_board = apply_move(move, board, player);
+        auto const score = -evaluate_position_minmax(test_board, Color{!bool(player)}, 4);
+
+        if (score > best_score)
+        {
+            best_score = score;
+            best_move = move;
+        }
+    }
+
+    return best_move;
 }
 
 }  // namespace rock

@@ -16,9 +16,6 @@ struct BitBoard;
 
 struct BoardPosition
 {
-    static constexpr auto min() -> BoardPosition { return BoardPosition{}; }
-    static constexpr auto max() -> BoardPosition { return BoardPosition{63}; }
-
     constexpr BoardPosition() = default;
     template <typename T>
     constexpr BoardPosition(T data) : data_{static_cast<u8>(data)}
@@ -31,6 +28,9 @@ struct BoardPosition
     template <typename T>
     constexpr BoardPosition(T x, T y) : BoardPosition{static_cast<u8>(y * 8 + x)}
     {}
+
+    static constexpr auto min() -> BoardPosition { return BoardPosition{}; }
+    static constexpr auto max() -> BoardPosition { return BoardPosition{63}; }
 
     constexpr auto data() const -> u8 { return data_; }
     explicit constexpr operator u8() const { return data_; };

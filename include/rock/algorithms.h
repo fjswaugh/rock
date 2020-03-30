@@ -11,6 +11,14 @@ auto count_moves(Board const& board, Color player_to_move, int level = 0) -> std
 auto find_all_neighbours_of(u64 pieces, u64 board) -> u64;
 auto are_pieces_all_together(u64 const board) -> bool;
 
+/**
+ * Player to move, positive result is good for player
+ */
+auto evaluate_position_quick(Board const& board, Color player) -> double;
+auto evaluate_position_minmax(Board const& board, Color player, int depth) -> double;
+
+auto recommend_move(Board const& board, Color player) -> Move;
+
 template <typename Rng>
 auto pick_random_move(Board const& board, Color const player_to_move, Rng& rng) -> Move
 {
