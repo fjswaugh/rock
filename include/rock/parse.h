@@ -49,9 +49,9 @@ constexpr auto parse_literal_board(std::string_view str) -> Board
             char const ch = *(it++);
 
             if (ch == 'w' || ch == 'W')
-                board.pieces[bool(Color::White)] |= BoardPosition{col, row}.board();
+                board.pieces[bool(Player::White)] |= BoardPosition{col, row}.board();
             if (ch == 'b' || ch == 'B')
-                board.pieces[bool(Color::Black)] |= BoardPosition{col, row}.board();
+                board.pieces[bool(Player::Black)] |= BoardPosition{col, row}.board();
         }
         if (it != str.end() && *it == '\n')
             ++it;

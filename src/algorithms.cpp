@@ -20,7 +20,7 @@ namespace
     constexpr auto board_from_position(u8 pos) -> u64 { return u64(1) << u64(pos); }
 }  // namespace
 
-auto generate_moves(Board const& board, Color player) -> MoveList
+auto generate_moves(Board const& board, Player player) -> MoveList
 {
     auto const enemy_pieces = board.pieces[!bool(player)];
     auto const friend_pieces = board.pieces[bool(player)];
@@ -73,7 +73,7 @@ auto generate_moves(Board const& board, Color player) -> MoveList
     return list;
 }
 
-auto count_moves(Board const& board, Color player_to_move, int level) -> std::size_t
+auto count_moves(Board const& board, Player player_to_move, int level) -> std::size_t
 {
     if (level <= 0)
         return 1;
@@ -88,7 +88,7 @@ auto count_moves(Board const& board, Color player_to_move, int level) -> std::si
     for (auto const move : moves)
     {
         auto const new_board = apply_move(move, board, player_to_move);
-        auto const new_player = Color{!bool(player_to_move)};
+        auto const new_player = Player{!bool(player_to_move)};
         num_moves += count_moves(new_board, new_player, level - 1);
     }
 
@@ -139,7 +139,7 @@ namespace
     };
 }  // namespace
 
-auto evaluate_position_quick(Board const& board, Color player) -> double
+auto evaluate_position_quick(Board const& board, Player player) -> double
 {
     bool const has_player_won = are_pieces_all_together(board.pieces[bool(player)]);
     bool const has_player_lost = are_pieces_all_together(board.pieces[!bool(player)]);
@@ -169,7 +169,7 @@ namespace
     }
 }  // namespace
 
-auto evaluate_position_minmax(Board const& board, Color player, int depth) -> double
+auto evaluate_position_minmax(Board const& board, Player player, int depth) -> double
 {
     if (depth == 0 || is_game_over(board))
         return evaluate_position_quick(board, player);
@@ -178,13 +178,13 @@ auto evaluate_position_minmax(Board const& board, Color player, int depth) -> do
     for (auto move : generate_moves(board, player))
     {
         auto const move_value = -evaluate_position_minmax(
-            apply_move(move, board, player), Color{!bool(player)}, depth - 1);
+            apply_move(move, board, player), Player{!bool(player)}, depth - 1);
         value = std::max(value, move_value);
     }
     return value;
 }
 
-auto recommend_move(Board const& board, Color player) -> Move
+auto recommend_move(Board const& board, Player player) -> Move
 {
     auto best_move = Move{};
     auto best_score = -std::numeric_limits<double>::max();
@@ -193,7 +193,7 @@ auto recommend_move(Board const& board, Color player) -> Move
     for (auto const move : all_moves)
     {
         auto const test_board = apply_move(move, board, player);
-        auto const score = -evaluate_position_minmax(test_board, Color{!bool(player)}, 4);
+        auto const score = -evaluate_position_minmax(test_board, Player{!bool(player)}, 4);
 
         if (score > best_score)
         {

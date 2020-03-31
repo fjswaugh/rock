@@ -21,14 +21,14 @@ auto print_random_game(std::mt19937& rng) -> void
     while (std::getline(std::cin, line))
     {
         {
-            auto const move = pick_random_move(b, rock::Color::White, rng);
-            b = apply_move(move, b, rock::Color::White);
+            auto const move = pick_random_move(b, rock::Player::White, rng);
+            b = apply_move(move, b, rock::Player::White);
             std::cout << fmt::format("White: {}\n", move);
         }
 
         {
-            auto const move = pick_random_move(b, rock::Color::Black, rng);
-            b = apply_move(move, b, rock::Color::Black);
+            auto const move = pick_random_move(b, rock::Player::Black, rng);
+            b = apply_move(move, b, rock::Player::Black);
             std::cout << fmt::format("Black: {}\n", move);
         }
 
@@ -44,21 +44,21 @@ auto print_random_game(std::mt19937& rng) -> void
 
 struct GameInfo
 {
-    rock::Color winner{};
+    rock::Player winner{};
     int num_turns{};
 };
 
 auto play_random_game(std::mt19937& rng) -> GameInfo
 {
-    auto const test_winner = [&](rock::Board const& b) -> std::optional<rock::Color> {
+    auto const test_winner = [&](rock::Board const& b) -> std::optional<rock::Player> {
         if (rock::are_pieces_all_together(b.pieces[0]))
-            return rock::Color(0);
+            return rock::Player(0);
         else if (rock::are_pieces_all_together(b.pieces[1]))
-            return rock::Color(1);
+            return rock::Player(1);
         return std::nullopt;
     };
 
-    auto c = rock::Color::White;
+    auto c = rock::Player::White;
     auto b = rock::starting_board;
     auto i = int{};
 
@@ -68,7 +68,7 @@ auto play_random_game(std::mt19937& rng) -> GameInfo
 
         b = apply_move(move, b, c);
         ++i;
-        c = rock::Color(!bool(c));
+        c = rock::Player(!bool(c));
 
         if (auto winner = test_winner(b))
             return {*winner, i};
@@ -80,7 +80,7 @@ auto main(int argc, char** argv) -> int
     if (argc == 2)
     {
         auto const n = std::stoi(argv[1]);
-        constexpr auto const player_to_move = rock::Color::White;
+        constexpr auto const player_to_move = rock::Player::White;
         std::cout << fmt::format(
             "Number of moves: {}\n", count_moves(rock::starting_board, player_to_move, n));
     }
@@ -99,7 +99,7 @@ auto main(int argc, char** argv) -> int
             auto const res = play_random_game(rng);
             std::cout << fmt::format(
                 "Winner: '{}', Num turns: {}\n",
-                res.winner == rock::Color::White ? "w" : "b",
+                res.winner == rock::Player::White ? "w" : "b",
                 res.num_turns);
         }
     }

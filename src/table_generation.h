@@ -1,4 +1,5 @@
 #pragma once
+
 #include "rock/types.h"
 
 namespace rock

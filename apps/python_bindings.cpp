@@ -12,14 +12,14 @@ namespace
 
 auto py_apply_move(rock::Board& x, rock::Move m) -> void
 {
-    auto const color = rock::BitBoard{x.pieces[bool(rock::Color::White)]}.at(m.from)
-        ? rock::Color::White
-        : rock::Color::Black;
+    auto const color = rock::BitBoard{x.pieces[bool(rock::Player::White)]}.at(m.from)
+        ? rock::Player::White
+        : rock::Player::Black;
 
     x = rock::apply_move(m, x, color);
 }
 
-auto py_pick_random_move(rock::Board const& board, rock::Color player_to_move) -> rock::Move
+auto py_pick_random_move(rock::Board const& board, rock::Player player_to_move) -> rock::Move
 {
     static auto rng = std::mt19937{std::random_device{}()};
     return rock::pick_random_move(board, player_to_move, rng);
@@ -33,9 +33,9 @@ PYBIND11_MODULE(rock, m)
 
     // Types
 
-    pybind11::enum_<rock::Color>(m, "Color")
-        .value("White", rock::Color::White)
-        .value("Black", rock::Color::Black)
+    pybind11::enum_<rock::Player>(m, "Player")
+        .value("White", rock::Player::White)
+        .value("Black", rock::Player::Black)
         .export_values();
 
     pybind11::class_<rock::BoardPosition>(m, "BoardPosition")
@@ -66,11 +66,11 @@ PYBIND11_MODULE(rock, m)
         .def("apply_move", &py_apply_move)
         .def(
             "winning_player",
-            [](rock::Board const& b) -> std::optional<rock::Color> {
-                return rock::are_pieces_all_together(b.pieces[bool(rock::Color::White)])
-                    ? std::optional{rock::Color::White}
-                    : rock::are_pieces_all_together(b.pieces[bool(rock::Color::Black)])
-                        ? std::optional{rock::Color::Black}
+            [](rock::Board const& b) -> std::optional<rock::Player> {
+                return rock::are_pieces_all_together(b.pieces[bool(rock::Player::White)])
+                    ? std::optional{rock::Player::White}
+                    : rock::are_pieces_all_together(b.pieces[bool(rock::Player::Black)])
+                        ? std::optional{rock::Player::Black}
                         : std::nullopt;
             })
         .def("__str__", [](rock::Board const& x) { return to_string(x); });
@@ -79,14 +79,14 @@ PYBIND11_MODULE(rock, m)
 
     m.def("make_starting_board", [] { return rock::starting_board; });
 
-    m.def("is_valid_move", [](rock::Move m, rock::Board const& b, rock::Color p) {
+    m.def("is_valid_move", [](rock::Move m, rock::Board const& b, rock::Player p) {
         auto const all_moves = rock::generate_moves(b, p);
         return std::find(all_moves.begin(), all_moves.end(), m) != all_moves.end();
     });
 
     m.def(
         "generate_moves",
-        [](rock::Board const& b, rock::Color p) {
+        [](rock::Board const& b, rock::Player p) {
             auto const moves = rock::generate_moves(b, p);
             return std::vector(moves.begin(), moves.end());
         },
@@ -97,7 +97,7 @@ PYBIND11_MODULE(rock, m)
         "count_moves",
         &rock::count_moves,
         "board"_a = rock::starting_board,
-        "player"_a = rock::Color::White,
+        "player"_a = rock::Player::White,
         "level"_a = 1);
 
     m.def("pick_random_move", &py_pick_random_move, "board"_a, "player"_a);

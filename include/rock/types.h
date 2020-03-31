@@ -6,7 +6,7 @@
 namespace rock
 {
 
-enum struct Color : bool
+enum struct Player : bool
 {
     White,
     Black,
@@ -132,7 +132,7 @@ private:
     std::size_t size_{};
 };
 
-constexpr auto apply_move(Move const m, Board b, Color const player) -> Board
+constexpr auto apply_move(Move const m, Board b, Player const player) -> Board
 {
     // TODO: tidy up
     auto const from = BoardPosition{m.from}.board().data();
