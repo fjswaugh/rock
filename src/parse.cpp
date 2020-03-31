@@ -64,7 +64,7 @@ auto parse_move(std::string_view view) -> std::optional<Move>
         auto const to = parse_board_position(to_str);
 
         if (from && to)
-            return Move{from->data(), to->data()};
+            return Move{*from, *to};
     }
 
     return std::nullopt;

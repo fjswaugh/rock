@@ -12,25 +12,17 @@ namespace
 
 auto py_apply_move(rock::Board& x, rock::Move m) -> void
 {
-    auto const color = rock::BitBoard{x[rock::Player::White]}.at(m.from)
+    auto const player = rock::BitBoard{x[rock::Player::White]}.at(m.from)
         ? rock::Player::White
         : rock::Player::Black;
 
-    x = rock::apply_move(m, x, color);
+    x = rock::apply_move(m, x, player);
 }
 
-auto py_pick_random_move(rock::Board const& board, rock::Player player_to_move) -> rock::Move
+auto py_format_board(rock::Board const& x, std::string const& format_string) -> std::string
 {
-    static auto rng = std::mt19937{std::random_device{}()};
-    return rock::pick_random_move(board, player_to_move, rng);
-}
-
-auto py_winning_player(rock::Board const& b) -> std::optional<rock::Player>
-{
-    return rock::are_pieces_all_together(b[rock::Player::White])
-        ? std::optional{rock::Player::White}
-        : rock::are_pieces_all_together(b[rock::Player::Black]) ? std::optional{rock::Player::Black}
-                                                                : std::nullopt;
+    auto const full_format_string = format_string.empty() ? "{}" : "{:" + format_string + "}";
+    return fmt::format(full_format_string, x);
 }
 
 }  // namespace
@@ -44,6 +36,13 @@ PYBIND11_MODULE(rock, m)
     pybind11::enum_<rock::Player>(m, "Player")
         .value("White", rock::Player::White)
         .value("Black", rock::Player::Black)
+        .export_values();
+
+    pybind11::enum_<rock::GameOutcome>(m, "GameOutcome")
+        .value("Ongoing", rock::GameOutcome::Ongoing)
+        .value("WhiteWins", rock::GameOutcome::WhiteWins)
+        .value("BlackWins", rock::GameOutcome::BlackWins)
+        .value("Draw", rock::GameOutcome::Draw)
         .export_values();
 
     pybind11::class_<rock::BoardPosition>(m, "BoardPosition")
@@ -63,8 +62,9 @@ PYBIND11_MODULE(rock, m)
         .def(pybind11::init<>())
         .def(pybind11::init([](std::string const& str) { return rock::parse_move(str).value(); }))
         .def(pybind11::init([](rock::BoardPosition from, rock::BoardPosition to) {
-            return rock::Move{from.data(), to.data()};
+            return rock::Move{from, to};
         }))
+        .def("is_legal", &rock::is_legal_move, "board"_a, "player"_a)
         .def_static("parse", [](std::string const& str) { return rock::parse_move(str); })
         .def("__str__", [](rock::Move x) { return to_string(x); })
         .def("__repr__", [](rock::Move x) { return fmt::format("rock.Move('{}')", x); });
@@ -72,24 +72,13 @@ PYBIND11_MODULE(rock, m)
     pybind11::class_<rock::Board>(m, "Board")
         .def(pybind11::init<>())
         .def("apply_move", &py_apply_move)
-        .def("winning_player", &py_winning_player)
-        .def(
-            "__format__",
-            [](rock::Board const& x, std::string const& format_string) {
-                auto const full_format_string = format_string.empty() ? "{}"
-                                                                      : "{:" + format_string + "}";
-                return fmt::format(full_format_string, x);
-            })
+        .def("game_outcome", rock::get_game_outcome, "player_to_move"_a)
+        .def("__format__",&py_format_board)
         .def("__str__", [](rock::Board const& x) { return to_string(x); });
 
     // Functions
 
-    m.def("make_starting_board", [] { return rock::starting_board; });
-
-    m.def("is_valid_move", [](rock::Move m, rock::Board const& b, rock::Player p) {
-        auto const all_moves = rock::generate_moves(b, p);
-        return std::find(all_moves.begin(), all_moves.end(), m) != all_moves.end();
-    });
+    m.attr("starting_board") = rock::starting_board;
 
     m.def(
         "generate_moves",
@@ -107,8 +96,22 @@ PYBIND11_MODULE(rock, m)
         "player"_a = rock::Player::White,
         "level"_a = 1);
 
-    m.def("pick_random_move", &py_pick_random_move, "board"_a, "player"_a);
+    m.def(
+        "evaluate",
+        [](rock::Board const& b, rock::Player p, int d) {
+            return rock::normalize_score(rock::evaluate_position_minmax(b, p, d), p);
+        },
+        "board"_a,
+        "player"_a,
+        "depth"_a);
 
-    m.def("evaluate", &rock::evaluate_position_minmax, "board"_a, "player"_a, "depth"_a = 4);
-    m.def("recommend_move", &rock::recommend_move, "board"_a, "player"_a);
+    m.def(
+        "recommend_move",
+        [](rock::Board const& b, rock::Player p) {
+            auto move_score = rock::recommend_move(b, p);
+            move_score.second = rock::normalize_score(move_score.second, p);
+            return move_score;
+        },
+        "board"_a,
+        "player"_a);
 }

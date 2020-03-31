@@ -13,6 +13,13 @@
 #include <string_view>
 #include <vector>
 
+auto pick_random_move(rock::Board const& b, rock::Player p, std::mt19937& rng)
+{
+    auto const all_moves = rock::generate_moves(b, p);
+    auto dist = std::uniform_int_distribution<std::size_t>{0, all_moves.size() - 1};
+    return all_moves[dist(rng)];
+}
+
 auto print_random_game(std::mt19937& rng) -> void
 {
     auto line = std::string{};
@@ -44,34 +51,26 @@ auto print_random_game(std::mt19937& rng) -> void
 
 struct GameInfo
 {
-    rock::Player winner{};
+    rock::GameOutcome outcome{};
     int num_turns{};
 };
 
 auto play_random_game(std::mt19937& rng) -> GameInfo
 {
-    auto const test_winner = [&](rock::Board const& b) -> std::optional<rock::Player> {
-        if (rock::are_pieces_all_together(b[rock::Player::White]))
-            return rock::Player::White;
-        else if (rock::are_pieces_all_together(b[rock::Player::Black]))
-            return rock::Player::Black;
-        return std::nullopt;
-    };
-
-    auto c = rock::Player::White;
+    auto p = rock::Player::White;
     auto b = rock::starting_board;
     auto i = int{};
 
     while (true)
     {
-        auto move = rock::pick_random_move(b, c, rng);
+        auto move = pick_random_move(b, p, rng);
 
-        b = apply_move(move, b, c);
+        b = apply_move(move, b, p);
         ++i;
-        c = rock::Player(!bool(c));
+        p = !p;
 
-        if (auto winner = test_winner(b))
-            return {*winner, i};
+        if (auto outcome = rock::get_game_outcome(b, p); outcome != rock::GameOutcome::Ongoing)
+            return {outcome, i};
     }
 }
 
@@ -97,10 +96,7 @@ auto main(int argc, char** argv) -> int
         for (auto i = 0; i < 1000; ++i)
         {
             auto const res = play_random_game(rng);
-            std::cout << fmt::format(
-                "Winner: '{}', Num turns: {}\n",
-                res.winner == rock::Player::White ? "w" : "b",
-                res.num_turns);
+            std::cout << fmt::format("Outcome: '{}', Num turns: {}\n", res.outcome, res.num_turns);
         }
     }
 }

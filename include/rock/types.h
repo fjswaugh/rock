@@ -22,13 +22,21 @@ constexpr auto operator!(Player p) -> Player
     return Player{!static_cast<bool>(p)};
 }
 
+enum struct GameOutcome
+{
+    Ongoing = 0,
+    WhiteWins,
+    BlackWins,
+    Draw,
+};
+
 struct BitBoard;
 
 struct BoardPosition
 {
     constexpr BoardPosition() = default;
     template <typename T>
-    constexpr BoardPosition(T data) : data_{static_cast<u8>(data)}
+    explicit constexpr BoardPosition(T data) : data_{static_cast<u8>(data)}
     {
 #ifndef NDEBUG
         if (data >= static_cast<T>(64))

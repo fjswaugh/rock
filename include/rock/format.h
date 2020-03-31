@@ -43,14 +43,38 @@ namespace fmt
 {
 
 template <>
-struct formatter<rock::Player>
+struct formatter<rock::Player> : formatter<std::string_view>
 {
-    constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
-
     template <typename FormatContext>
     auto format(rock::Player p, FormatContext& ctx)
     {
-        return format_to(ctx.out(), p == rock::Player::White ? "White" : "Black");
+        auto const s = p == rock::Player::White ? "White" : "Black";
+        return formatter<std::string_view>::format(s, ctx);
+    }
+};
+
+template <>
+struct formatter<rock::GameOutcome> : formatter<std::string_view>
+{
+    template <typename FormatContext>
+    auto format(rock::GameOutcome o, FormatContext& ctx)
+    {
+        auto const s = [o] {
+            switch (o)
+            {
+            default:
+            case rock::GameOutcome::Ongoing:
+                return "Ongoing";
+            case rock::GameOutcome::WhiteWins:
+                return "WhiteWins";
+            case rock::GameOutcome::BlackWins:
+                return "BlackWins";
+            case rock::GameOutcome::Draw:
+                return "Draw";
+            }
+        }();
+
+        return formatter<std::string_view>::format(s, ctx);
     }
 };
 

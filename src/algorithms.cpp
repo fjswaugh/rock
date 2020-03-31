@@ -1,6 +1,7 @@
 #include "rock/algorithms.h"
 #include "rock/parse.h"
 #include "table_generation.h"
+#include <algorithm>
 
 namespace rock
 {
@@ -59,13 +60,13 @@ auto generate_moves(Board const& board, Player player) -> MoveList
             if (ce_d_p && (enemy_pieces & c_d_p) == u64{} && (friend_pieces & ce_d_p) == u64{})
             {
                 auto const to = position_from_board(ce_d_p);
-                list.push_back({pos, to});
+                list.push_back({BoardPosition{pos}, BoardPosition{to}});
             }
 
             if (ce_d_n && (enemy_pieces & c_d_n) == u64{} && (friend_pieces & ce_d_n) == u64{})
             {
                 auto const to = position_from_board(ce_d_n);
-                list.push_back({pos, to});
+                list.push_back({BoardPosition{pos}, BoardPosition{to}});
             }
         }
     }
@@ -94,30 +95,39 @@ auto count_moves(Board const& board, Player player_to_move, int level) -> std::s
     return num_moves;
 }
 
-auto find_all_neighbours_of(BitBoard pieces, BitBoard board) -> u64
+auto is_legal_move(Move move, Board const& board, Player player) -> bool
 {
-    auto found = u64{};
-
-    while (pieces)
-    {
-        auto const pos = position_from_board(pieces);
-        auto const pos_board = board_from_position(pos);
-
-        auto const circle = all_circles.data[pos][1];
-        auto const edge = circle ^ pos_board;
-
-        auto const populated_circle = circle & board;
-        auto const populated_edge = edge & board;
-
-        found |= pos_board;
-        found |= populated_circle;
-        found |= find_all_neighbours_of(populated_edge, board & (~found));
-
-        pieces &= (~found);
-    }
-
-    return found;
+    auto const all_moves = generate_moves(board, player);
+    return std::find(all_moves.begin(), all_moves.end(), move) != all_moves.end();
 }
+
+namespace
+{
+    auto find_all_neighbours_of(BitBoard pieces, BitBoard board) -> u64
+    {
+        auto found = u64{};
+
+        while (pieces)
+        {
+            auto const pos = position_from_board(pieces);
+            auto const pos_board = board_from_position(pos);
+
+            auto const circle = all_circles.data[pos][1];
+            auto const edge = circle ^ pos_board;
+
+            auto const populated_circle = circle & board;
+            auto const populated_edge = edge & board;
+
+            found |= pos_board;
+            found |= populated_circle;
+            found |= find_all_neighbours_of(populated_edge, board & (~found));
+
+            pieces &= (~found);
+        }
+
+        return found;
+    }
+}  // namespace
 
 auto are_pieces_all_together(BitBoard const board) -> bool
 {
@@ -127,6 +137,20 @@ auto are_pieces_all_together(BitBoard const board) -> bool
     auto const blob = find_all_neighbours_of(pos_board, board);
 
     return (board ^ blob) == 0;
+}
+
+auto get_game_outcome(Board const& board, Player player_to_move) -> GameOutcome
+{
+    bool const w = are_pieces_all_together(board[Player::White]);
+    bool const b = are_pieces_all_together(board[Player::Black]);
+
+    if (w && !b)
+        return GameOutcome::WhiteWins;
+    if (b && !w)
+        return GameOutcome::BlackWins;
+    if ((w && b) || count_moves(board, player_to_move) == 0)
+        return GameOutcome::Draw;
+    return GameOutcome::Ongoing;
 }
 
 namespace
@@ -184,7 +208,7 @@ auto evaluate_position_minmax(Board const& board, Player player, int depth) -> d
     return value;
 }
 
-auto recommend_move(Board const& board, Player player) -> Move
+auto recommend_move(Board const& board, Player player) -> std::pair<Move, double>
 {
     auto best_move = Move{};
     auto best_score = -std::numeric_limits<double>::max();
@@ -202,7 +226,12 @@ auto recommend_move(Board const& board, Player player) -> Move
         }
     }
 
-    return best_move;
+    return {best_move, best_score};
+}
+
+auto normalize_score(double score, Player player) -> double
+{
+    return player == Player::Black ? -score : score;
 }
 
 }  // namespace rock

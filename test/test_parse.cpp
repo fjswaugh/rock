@@ -10,5 +10,5 @@ TEST_CASE("rock::parse_move")
 {
     CHECK(
         rock::parse_move("A1 B2") ==
-        rock::Move{rock::BoardPosition{0, 0}.data(), rock::BoardPosition{1, 1}.data()});
+        rock::Move{rock::BoardPosition{0, 0}, rock::BoardPosition{1, 1}});
 }
