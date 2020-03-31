@@ -74,12 +74,12 @@ PYBIND11_MODULE(rock, m)
         .def("apply_move", &py_apply_move)
         .def("winning_player", &py_winning_player)
         .def(
-            "format",
-            [](rock::Board const& x, rock::u64 mode, char empty_char) {
-                return to_string(x, {mode, empty_char});
-            },
-            "mode"_a = rock::BoardFormatMode::Default,
-            "empty_char"_a = ' ')
+            "__format__",
+            [](rock::Board const& x, std::string const& format_string) {
+                auto const full_format_string = format_string.empty() ? "{}"
+                                                                      : "{:" + format_string + "}";
+                return fmt::format(full_format_string, x);
+            })
         .def("__str__", [](rock::Board const& x) { return to_string(x); });
 
     // Functions

@@ -57,35 +57,7 @@ struct formatter<rock::Player>
 template <>
 struct formatter<rock::Board>
 {
-    constexpr auto parse(format_parse_context& ctx) {
-        auto it = ctx.begin();
-        auto end = ctx.end();
-
-        if (it != end)
-        {
-            switch (*it++)
-            {
-            case 'c':
-                bf.mode = rock::BoardFormatMode::Compact;
-                break;
-            case 'd':
-                bf.mode = rock::BoardFormatMode::Default;
-                break;
-            case '}':
-                break;
-            default:
-                throw format_error("invalid format");
-            }
-        }
-
-        if (it != end && *it != '}')
-            bf.empty_char = *it;
-
-        if (it != end && *it != '}')
-            throw format_error("invalid format");
-
-        return it;
-    }
+    auto parse(format_parse_context& ctx) -> format_parse_context::iterator;
 
     template <typename FormatContext>
     auto format(rock::Board const& board, FormatContext& ctx)

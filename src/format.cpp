@@ -2,6 +2,68 @@
 #include <fmt/format.h>
 #include <string>
 
+auto fmt::formatter<rock::Board>::parse(format_parse_context& ctx) -> format_parse_context::iterator
+{
+    auto it = ctx.begin();
+    auto end = ctx.end();
+
+    // If there is a format string, start the mode from nothing
+    if (it != end && *it != '}')
+        bf.mode = {};
+
+    while (it != end && *it != '}')
+    {
+        switch (*it++)
+        {
+        case 's':
+            bf.mode ^= rock::BoardFormatMode::InnerSpaces;
+            break;
+        case 'S':
+            bf.mode ^= rock::BoardFormatMode::OuterSpaces;
+            break;
+        case 'b':
+            bf.mode ^= rock::BoardFormatMode::InnerBoundaries;
+            break;
+        case 'B':
+            bf.mode ^= rock::BoardFormatMode::OuterBoundaries;
+            break;
+        case 'u':
+            bf.mode ^= rock::BoardFormatMode::UpperCasePieces;
+            break;
+        case '^':
+            bf.mode ^= rock::BoardFormatMode::LabelTop;
+            break;
+        case '<':
+            bf.mode ^= rock::BoardFormatMode::LabelLeft;
+            break;
+        case '>':
+            bf.mode ^= rock::BoardFormatMode::LabelRight;
+            break;
+        case 'v':
+            bf.mode ^= rock::BoardFormatMode::LabelBottom;
+            break;
+        case 'd':
+            bf.mode |= rock::BoardFormatMode::Default;
+            break;
+        case 'a':
+            bf.mode |= ~rock::u64{};
+            break;
+        case 'e':
+            if (it == end)
+                throw format_error("invalid format");
+            bf.empty_char = *it++;
+            break;
+        default:
+            throw format_error("invalid format");
+        }
+    }
+
+    if (it != end && *it != '}')
+        throw format_error("invalid format");
+
+    return it;
+}
+
 namespace rock
 {
 
@@ -206,6 +268,9 @@ auto to_string(Board const& board, BoardFormat const& bf) -> std::string
 
     if (bf.mode & BoardFormatMode::LabelBottom)
         str += make_horizontal_label(bf) + "\n";
+
+    // Don't include the final new line
+    str.pop_back();
 
     return str;
 }
