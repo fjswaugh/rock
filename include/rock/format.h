@@ -6,9 +6,9 @@
 namespace rock
 {
 
+auto to_string(Player) -> std::string;
 auto to_string(Board const&) -> std::string;
 auto to_string(BitBoard) -> std::string;
-auto to_string(u64) -> std::string;
 auto to_string(BoardPosition) -> std::string;
 auto to_string(Move) -> std::string;
 
@@ -16,6 +16,18 @@ auto to_string(Move) -> std::string;
 
 namespace fmt
 {
+
+template <>
+struct formatter<rock::Player>
+{
+    constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
+
+    template <typename FormatContext>
+    auto format(rock::Player p, FormatContext& ctx)
+    {
+        return format_to(ctx.out(), p == rock::Player::White ? "White" : "Black");
+    }
+};
 
 template <>
 struct formatter<rock::Board>

@@ -12,7 +12,7 @@ namespace
 
 auto py_apply_move(rock::Board& x, rock::Move m) -> void
 {
-    auto const color = rock::BitBoard{x.pieces[bool(rock::Player::White)]}.at(m.from)
+    auto const color = rock::BitBoard{x[rock::Player::White]}.at(m.from)
         ? rock::Player::White
         : rock::Player::Black;
 
@@ -67,9 +67,9 @@ PYBIND11_MODULE(rock, m)
         .def(
             "winning_player",
             [](rock::Board const& b) -> std::optional<rock::Player> {
-                return rock::are_pieces_all_together(b.pieces[bool(rock::Player::White)])
+                return rock::are_pieces_all_together(b[rock::Player::White])
                     ? std::optional{rock::Player::White}
-                    : rock::are_pieces_all_together(b.pieces[bool(rock::Player::Black)])
+                    : rock::are_pieces_all_together(b[rock::Player::Black])
                         ? std::optional{rock::Player::Black}
                         : std::nullopt;
             })

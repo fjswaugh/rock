@@ -5,14 +5,19 @@
 namespace rock
 {
 
+auto to_string(Player p) -> std::string
+{
+    return fmt::format("{}", p);
+}
+
 namespace
 {
     auto format_pos(Board const& board, int row, int col) -> char
     {
         auto const mask = BoardPosition{col, row}.board();
-        bool const p0 = board.pieces[0] & mask;
-        bool const p1 = board.pieces[1] & mask;
-        return p0 ? 'w' : p1 ? 'b' : ' ';
+        bool const p_w = board[Player::White] & mask;
+        bool const p_b = board[Player::Black] & mask;
+        return p_w ? 'w' : p_b ? 'b' : ' ';
     }
 }  // namespace
 
@@ -56,11 +61,6 @@ auto to_string(BitBoard board) -> std::string
     }
     str.pop_back();
     return str;
-}
-
-auto to_string(u64 board) -> std::string
-{
-    return to_string(BitBoard{board});
 }
 
 auto to_string(BoardPosition pos) -> std::string

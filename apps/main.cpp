@@ -33,8 +33,8 @@ auto print_random_game(std::mt19937& rng) -> void
         }
 
         std::cout << fmt::format("Turn {}:\n{}\n", ++i, b);
-        if (rock::are_pieces_all_together(b.pieces[0]) ||
-            rock::are_pieces_all_together(b.pieces[1]))
+        if (rock::are_pieces_all_together(b[rock::Player::White]) ||
+            rock::are_pieces_all_together(b[rock::Player::Black]))
         {
             std::cout << "End.\n";
             break;
@@ -51,10 +51,10 @@ struct GameInfo
 auto play_random_game(std::mt19937& rng) -> GameInfo
 {
     auto const test_winner = [&](rock::Board const& b) -> std::optional<rock::Player> {
-        if (rock::are_pieces_all_together(b.pieces[0]))
-            return rock::Player(0);
-        else if (rock::are_pieces_all_together(b.pieces[1]))
-            return rock::Player(1);
+        if (rock::are_pieces_all_together(b[rock::Player::White]))
+            return rock::Player::White;
+        else if (rock::are_pieces_all_together(b[rock::Player::Black]))
+            return rock::Player::Black;
         return std::nullopt;
     };
 

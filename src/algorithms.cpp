@@ -22,8 +22,8 @@ namespace
 
 auto generate_moves(Board const& board, Player player) -> MoveList
 {
-    auto const enemy_pieces = board.pieces[!bool(player)];
-    auto const friend_pieces = board.pieces[bool(player)];
+    auto const enemy_pieces = board[!player];
+    auto const friend_pieces = board[player];
     auto const all_pieces = enemy_pieces | friend_pieces;
 
     auto list = MoveList{};
@@ -59,13 +59,13 @@ auto generate_moves(Board const& board, Player player) -> MoveList
             if (ce_d_p && (enemy_pieces & c_d_p) == u64{} && (friend_pieces & ce_d_p) == u64{})
             {
                 auto const to = position_from_board(ce_d_p);
-                list.push_back({u8(pos), u8(to)});
+                list.push_back({pos, to});
             }
 
             if (ce_d_n && (enemy_pieces & c_d_n) == u64{} && (friend_pieces & ce_d_n) == u64{})
             {
                 auto const to = position_from_board(ce_d_n);
-                list.push_back({u8(pos), u8(to)});
+                list.push_back({pos, to});
             }
         }
     }
@@ -88,14 +88,13 @@ auto count_moves(Board const& board, Player player_to_move, int level) -> std::s
     for (auto const move : moves)
     {
         auto const new_board = apply_move(move, board, player_to_move);
-        auto const new_player = Player{!bool(player_to_move)};
-        num_moves += count_moves(new_board, new_player, level - 1);
+        num_moves += count_moves(new_board, !player_to_move, level - 1);
     }
 
     return num_moves;
 }
 
-auto find_all_neighbours_of(u64 pieces, u64 board) -> u64
+auto find_all_neighbours_of(BitBoard pieces, BitBoard board) -> u64
 {
     auto found = u64{};
 
@@ -120,7 +119,7 @@ auto find_all_neighbours_of(u64 pieces, u64 board) -> u64
     return found;
 }
 
-auto are_pieces_all_together(u64 const board) -> bool
+auto are_pieces_all_together(BitBoard const board) -> bool
 {
     auto const pos = position_from_board(board);
     auto const pos_board = board_from_position(pos);
@@ -141,8 +140,8 @@ namespace
 
 auto evaluate_position_quick(Board const& board, Player player) -> double
 {
-    bool const has_player_won = are_pieces_all_together(board.pieces[bool(player)]);
-    bool const has_player_lost = are_pieces_all_together(board.pieces[!bool(player)]);
+    bool const has_player_won = are_pieces_all_together(board[player]);
+    bool const has_player_lost = are_pieces_all_together(board[!player]);
 
     if (has_player_lost || has_player_won)
         return 1000.0 * (double(has_player_won) - double(has_player_lost));
@@ -152,9 +151,9 @@ auto evaluate_position_quick(Board const& board, Player player) -> double
     for (auto const & [positions, value] : important_positions)
     {
         res += value *
-            static_cast<double>(pop_count(positions.data() & board.pieces[bool(player)]));
+            static_cast<double>(pop_count(positions & board[player]));
         res -= value *
-            static_cast<double>(pop_count(positions.data() & board.pieces[!bool(player)]));
+            static_cast<double>(pop_count(positions & board[!player]));
     }
 
     return res;
@@ -164,8 +163,9 @@ namespace
 {
     bool is_game_over(Board const& board)
     {
-        return board.pieces[0] == u64{} || board.pieces[1] == u64{} ||
-            are_pieces_all_together(board.pieces[0]) || are_pieces_all_together(board.pieces[1]);
+        return board[Player::White] == BitBoard{} || board[Player::Black] == BitBoard{} ||
+            are_pieces_all_together(board[Player::White]) ||
+            are_pieces_all_together(board[Player::Black]);
     }
 }  // namespace
 
@@ -177,8 +177,8 @@ auto evaluate_position_minmax(Board const& board, Player player, int depth) -> d
     auto value = -std::numeric_limits<double>::max();
     for (auto move : generate_moves(board, player))
     {
-        auto const move_value = -evaluate_position_minmax(
-            apply_move(move, board, player), Player{!bool(player)}, depth - 1);
+        auto const move_value =
+            -evaluate_position_minmax(apply_move(move, board, player), !player, depth - 1);
         value = std::max(value, move_value);
     }
     return value;
@@ -193,7 +193,7 @@ auto recommend_move(Board const& board, Player player) -> Move
     for (auto const move : all_moves)
     {
         auto const test_board = apply_move(move, board, player);
-        auto const score = -evaluate_position_minmax(test_board, Player{!bool(player)}, 4);
+        auto const score = -evaluate_position_minmax(test_board, !player, 4);
 
         if (score > best_score)
         {

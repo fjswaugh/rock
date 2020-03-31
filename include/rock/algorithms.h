@@ -8,8 +8,8 @@ namespace rock
 
 auto generate_moves(Board const& board, Player player) -> MoveList;
 auto count_moves(Board const& board, Player player_to_move, int level = 0) -> std::size_t;
-auto find_all_neighbours_of(u64 pieces, u64 board) -> u64;
-auto are_pieces_all_together(u64 const board) -> bool;
+auto find_all_neighbours_of(BitBoard pieces, BitBoard board) -> u64;
+auto are_pieces_all_together(BitBoard board) -> bool;
 
 /**
  * Player to move, positive result is good for player
