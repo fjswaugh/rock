@@ -25,6 +25,14 @@ auto py_pick_random_move(rock::Board const& board, rock::Player player_to_move) 
     return rock::pick_random_move(board, player_to_move, rng);
 }
 
+auto py_winning_player(rock::Board const& b) -> std::optional<rock::Player>
+{
+    return rock::are_pieces_all_together(b[rock::Player::White])
+        ? std::optional{rock::Player::White}
+        : rock::are_pieces_all_together(b[rock::Player::Black]) ? std::optional{rock::Player::Black}
+                                                                : std::nullopt;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(rock, m)
@@ -64,15 +72,14 @@ PYBIND11_MODULE(rock, m)
     pybind11::class_<rock::Board>(m, "Board")
         .def(pybind11::init<>())
         .def("apply_move", &py_apply_move)
+        .def("winning_player", &py_winning_player)
         .def(
-            "winning_player",
-            [](rock::Board const& b) -> std::optional<rock::Player> {
-                return rock::are_pieces_all_together(b[rock::Player::White])
-                    ? std::optional{rock::Player::White}
-                    : rock::are_pieces_all_together(b[rock::Player::Black])
-                        ? std::optional{rock::Player::Black}
-                        : std::nullopt;
-            })
+            "format",
+            [](rock::Board const& x, rock::u64 mode, char empty_char) {
+                return to_string(x, {mode, empty_char});
+            },
+            "mode"_a = rock::BoardFormatMode::Default,
+            "empty_char"_a = ' ')
         .def("__str__", [](rock::Board const& x) { return to_string(x); });
 
     // Functions
