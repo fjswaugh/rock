@@ -1,10 +1,24 @@
 #include "rock/parse.h"
+#include <algorithm>
 #include <regex>
 
 // Note, these functions are not efficient in any way
 
 namespace rock
 {
+
+auto parse_player(std::string_view orig) -> std::optional<Player>
+{
+    auto lowercase = std::string{orig};
+    for (char& ch : lowercase)
+        ch = std::tolower(ch);
+
+    if (lowercase == "w" || lowercase == "white" || orig == "Player::White")
+        return Player::White;
+    if (lowercase == "b" || lowercase == "black" || orig == "Player::Black")
+        return Player::Black;
+    return std::nullopt;
+}
 
 auto parse_board_position(std::string_view view) -> std::optional<BoardPosition>
 {
