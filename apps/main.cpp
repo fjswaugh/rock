@@ -84,19 +84,15 @@ auto main(int argc, char** argv) -> int
             "Number of moves: {}\n", count_moves(rock::starting_board, player_to_move, n));
     }
 
+    std::cout << fmt::format("Number of moves: {}\n", count_moves(rock::starting_board, rock::Player::White, 5));
+
     auto rng = std::mt19937{std::random_device{}()};
 
-    if (false)
-    {
-        print_random_game(rng);
-    }
+    //print_random_game(rng);
 
-    if (false)
-    {
-        for (auto i = 0; i < 1000; ++i)
-        {
-            auto const res = play_random_game(rng);
-            std::cout << fmt::format("Outcome: '{}', Num turns: {}\n", res.outcome, res.num_turns);
-        }
-    }
+    //for (auto i = 0; i < 1000; ++i)
+    //{
+    //    auto const res = play_random_game(rng);
+    //    std::cout << fmt::format("Outcome: '{}', Num turns: {}\n", res.outcome, res.num_turns);
+    //}
 }

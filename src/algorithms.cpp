@@ -8,6 +8,8 @@ namespace rock
 
 namespace
 {
+    constexpr double big = 1000.0;
+
     template <typename T, std::size_t N>
     using array_ref = T const (&)[N];
 
@@ -15,9 +17,7 @@ namespace
     constexpr auto all_directions = make_all_directions();
 
     auto pop_count(u64 x) -> u64 { return __builtin_popcountl(x); }
-
     auto position_from_board(u64 x) -> u64 { return __builtin_ctzl(x); }
-
     constexpr auto board_from_position(u8 pos) -> u64 { return u64(1) << u64(pos); }
 }  // namespace
 
@@ -84,7 +84,7 @@ auto count_moves(Board const& board, Player player_to_move, int level) -> std::s
     if (level == 1)
         return moves.size();
 
-    auto num_moves = int{};
+    auto num_moves = std::size_t{};
 
     for (auto const move : moves)
     {
@@ -160,73 +160,99 @@ namespace
         {all_circles.data[BoardPosition{3, 3}.data()][2], 1.0},
         {all_circles.data[BoardPosition{3, 3}.data()][1], 1.0},
     };
-}  // namespace
 
-auto evaluate_position_quick(Board const& board, Player player) -> double
-{
-    bool const has_player_won = are_pieces_all_together(board[player]);
-    bool const has_player_lost = are_pieces_all_together(board[!player]);
-
-    if (has_player_lost || has_player_won)
-        return 1000.0 * (double(has_player_won) - double(has_player_lost));
-
-    auto res = double{};
-
-    for (auto const & [positions, value] : important_positions)
+    auto evaluate_leaf_position(Board const& board, Player player) -> double
     {
-        res += value *
-            static_cast<double>(pop_count(positions & board[player]));
-        res -= value *
-            static_cast<double>(pop_count(positions & board[!player]));
-    }
+        bool const has_player_won = are_pieces_all_together(board[player]);
+        bool const has_player_lost = are_pieces_all_together(board[!player]);
 
-    return res;
-}
+        if (has_player_lost || has_player_won)
+            return 1000.0 * (double(has_player_won) - double(has_player_lost));
 
-namespace
-{
-    bool is_game_over(Board const& board)
-    {
-        return board[Player::White] == BitBoard{} || board[Player::Black] == BitBoard{} ||
-            are_pieces_all_together(board[Player::White]) ||
-            are_pieces_all_together(board[Player::Black]);
-    }
-}  // namespace
+        auto res = double{};
 
-auto evaluate_position_minmax(Board const& board, Player player, int depth) -> double
-{
-    if (depth == 0 || is_game_over(board))
-        return evaluate_position_quick(board, player);
-
-    auto value = -std::numeric_limits<double>::max();
-    for (auto move : generate_moves(board, player))
-    {
-        auto const move_value =
-            -evaluate_position_minmax(apply_move(move, board, player), !player, depth - 1);
-        value = std::max(value, move_value);
-    }
-    return value;
-}
-
-auto recommend_move(Board const& board, Player player) -> std::pair<Move, double>
-{
-    auto best_move = Move{};
-    auto best_score = -std::numeric_limits<double>::max();
-
-    auto const all_moves = generate_moves(board, player);
-    for (auto const move : all_moves)
-    {
-        auto const test_board = apply_move(move, board, player);
-        auto const score = -evaluate_position_minmax(test_board, !player, 4);
-
-        if (score > best_score)
+        for (auto const& [positions, value] : important_positions)
         {
-            best_score = score;
-            best_move = move;
+            res += value * static_cast<double>(pop_count(positions & board[player]));
+            res -= value * static_cast<double>(pop_count(positions & board[!player]));
         }
+
+        return res;
     }
 
-    return {best_move, best_score};
+    auto recommend_move_negamax(Board const& board, Player player, int depth) -> MoveRecommendation
+    {
+        if (depth == 0 || get_game_outcome(board, player) != GameOutcome::Ongoing)
+            return {{}, evaluate_leaf_position(board, player)};
+
+        auto best_score = -big;
+        auto best_move = Move{};
+
+        for (auto move : generate_moves(board, player))
+        {
+            auto const new_board = apply_move(move, board, player);
+            auto const score = -recommend_move_negamax(new_board, !player, depth - 1).score;
+
+            if (score > best_score)
+            {
+                best_score = score;
+                best_move = move;
+            }
+        }
+
+        return {best_move, best_score};
+    }
+
+    auto recommend_move_negamax_ab(
+        Board const& board, Player player, int depth, double alpha, double beta)
+        -> MoveRecommendation
+    {
+        if (depth == 0 || get_game_outcome(board, player) != GameOutcome::Ongoing)
+            return {{}, evaluate_leaf_position(board, player)};
+
+        auto best_score = -big;
+        auto best_move = Move{};
+
+        for (auto move : generate_moves(board, player))
+        {
+            auto const new_board = apply_move(move, board, player);
+            auto const score =
+                -recommend_move_negamax_ab(new_board, !player, depth - 1, -beta, -alpha).score;
+
+            if (score > best_score)
+            {
+                best_score = score;
+                best_move = move;
+            }
+
+            if (best_score > alpha)
+            {
+                // Until this happens, we are an 'All-Node'
+                // Now we may be a 'PV-Node', or...
+                alpha = best_score;
+            }
+
+            if (alpha >= beta)
+            {
+                // ...if this happens, we are a 'Cut-Node'
+                break;
+            }
+        }
+
+        // Note, we may return values outside of the range [alpha, beta]. This
+        // makes us a 'fail-soft' version of alpha-beta pruning
+        return {best_move, best_score};
+    }
+}  // namespace
+
+auto recommend_move(Board const& board, Player player) -> MoveRecommendation
+{
+    return recommend_move_negamax_ab(board, player, 6, -big, big);
+}
+
+auto evaluate_position(Board const& board, Player player) -> double
+{
+    return recommend_move(board, player).score;
 }
 
 auto normalize_score(double score, Player player) -> double

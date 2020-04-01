@@ -98,19 +98,18 @@ PYBIND11_MODULE(rock, m)
 
     m.def(
         "evaluate",
-        [](rock::Board const& b, rock::Player p, int d) {
-            return rock::normalize_score(rock::evaluate_position_minmax(b, p, d), p);
+        [](rock::Board const& b, rock::Player p) {
+            return rock::normalize_score(rock::evaluate_position(b, p), p);
         },
         "board"_a,
-        "player"_a,
-        "depth"_a);
+        "player"_a);
 
     m.def(
         "recommend_move",
         [](rock::Board const& b, rock::Player p) {
-            auto move_score = rock::recommend_move(b, p);
-            move_score.second = rock::normalize_score(move_score.second, p);
-            return move_score;
+            auto [move, score] = rock::recommend_move(b, p);
+            score = rock::normalize_score(score, p);
+            return pybind11::make_tuple(move, score);
         },
         "board"_a,
         "player"_a);
