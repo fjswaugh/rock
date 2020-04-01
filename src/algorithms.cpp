@@ -243,11 +243,72 @@ namespace
         // makes us a 'fail-soft' version of alpha-beta pruning
         return {best_move, best_score};
     }
+
+    auto recommend_move_negamax_ab_killer(
+        Board const& board,
+        Player player,
+        int depth,
+        double alpha,
+        double beta,
+        std::optional<Move> killer_move) -> MoveRecommendation
+    {
+        if (depth == 0 || get_game_outcome(board, player) != GameOutcome::Ongoing)
+            return {{}, evaluate_leaf_position(board, player)};
+
+        auto best_score = -big;
+        auto best_move = Move{};
+
+        auto all_moves = generate_moves(board, player);
+
+        if (killer_move)
+        {
+            if (auto it = std::find(all_moves.begin(), all_moves.end(), *killer_move);
+                it != all_moves.end())
+            {
+                std::swap(*all_moves.begin(), *it);
+            }
+
+            killer_move = std::nullopt;
+        }
+
+        for (auto move : all_moves)
+        {
+            auto const new_board = apply_move(move, board, player);
+            auto const recommendation = recommend_move_negamax_ab_killer(
+                new_board, !player, depth - 1, -beta, -alpha, killer_move);
+
+            auto const score = -recommendation.score;
+
+            if (score > best_score)
+            {
+                best_score = score;
+                best_move = move;
+                killer_move = recommendation.move;
+            }
+
+            if (best_score > alpha)
+            {
+                // Until this happens, we are an 'All-Node'
+                // Now we may be a 'PV-Node', or...
+                alpha = best_score;
+            }
+
+            if (alpha >= beta)
+            {
+                // ...if this happens, we are a 'Cut-Node'
+                break;
+            }
+        }
+
+        // Note, we may return values outside of the range [alpha, beta]. This
+        // makes us a 'fail-soft' version of alpha-beta pruning
+        return {best_move, best_score};
+    }
 }  // namespace
 
 auto recommend_move(Board const& board, Player player) -> MoveRecommendation
 {
-    return recommend_move_negamax_ab(board, player, 6, -big, big);
+    return recommend_move_negamax_ab_killer(board, player, 6, -big, big, {});
 }
 
 auto evaluate_position(Board const& board, Player player) -> double

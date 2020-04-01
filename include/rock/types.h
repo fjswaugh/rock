@@ -127,8 +127,10 @@ struct MoveList
         assert(size_ != 12 * 8);
         moves_[size_++] = move;
     }
-    constexpr auto begin() const { return &moves_[0]; }
-    constexpr auto end() const { return this->begin() + size_; }
+    constexpr auto begin() const -> Move const* { return &moves_[0]; }
+    constexpr auto end() const -> Move const* { return this->begin() + size_; }
+    constexpr auto begin() -> Move* { return &moves_[0]; }
+    constexpr auto end() -> Move* { return this->begin() + size_; }
     constexpr auto size() const { return size_; }
 
     constexpr Move& operator[](std::size_t i) { return moves_[i]; }
