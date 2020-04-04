@@ -3,7 +3,7 @@
 namespace rock
 {
 
-auto format_as_fen(rock::Board b) -> std::string
+auto format_as_fen(rock::Board const& b) -> std::string
 {
     auto res = std::string{};
 
