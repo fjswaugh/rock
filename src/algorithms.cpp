@@ -69,7 +69,7 @@ namespace
         // clang-format on
     }
 
-    [[maybe_unused]] inline auto position_from_board_manual(u64 x) -> u64
+    [[maybe_unused]] inline auto position_from_bit_board_manual(u64 x) -> u64
     {
         // clang-format off
         auto c = u64{64};
@@ -102,7 +102,7 @@ namespace
 #endif
     }
 
-    inline auto position_from_board(u64 x) -> u64
+    inline auto position_from_bit_board(u64 x) -> u64
     {
 #if defined(__GNUC__)
         if constexpr (num_bits<unsigned long> == 64)
@@ -115,23 +115,68 @@ namespace
             return static_cast<u64>(__builtin_ctzll(x));
         }
 #else
-        return position_from_board_manual(x);
+        return position_from_bit_board_manual(x);
 #endif
     }
 
-    constexpr auto board_from_position(u64 pos) -> u64 { return u64(1) << u64(pos); }
+    inline auto bit_board_from_position(u64 pos) -> u64 { return u64{1} << pos; }
 
-    auto generate_moves_impl(BitBoard friend_pieces, BitBoard enemy_pieces) -> MoveList
+    auto generate_legal_destinations_impl(
+        BoardPosition const from, BitBoard const friends, BitBoard const enemies) -> u64
     {
-        auto const all_pieces = enemy_pieces | friend_pieces;
+        auto result = u64{};
+        auto const all_pieces = friends | enemies;
+
+        auto const positive = (~u64{}) << static_cast<u64>(from.data());
+        auto const negative = ~positive;
+
+        array_ref<u64, 4> directions = all_directions.data[from.data()];
+        array_ref<u64, 8> circles = all_circles.data[from.data()];
+
+        for (u64 const dir : directions)
+        {
+            auto const possible_distance = pop_count(dir & all_pieces);
+
+            u64 const circle = circles[possible_distance - 1];
+            u64 const circle_edge = circles[std::min(u64{7}, possible_distance)] ^ circle;
+
+            auto const d_p = dir & positive;
+            auto const d_n = dir & negative;
+            auto const ce_d_p = circle_edge & d_p;
+            auto const ce_d_n = circle_edge & d_n;
+            auto const c_d_p = circle & d_p;
+            auto const c_d_n = circle & d_n;
+
+            assert(pop_count(circle_edge & dir & positive) <= 1);
+
+            if (ce_d_p && (enemies & c_d_p) == u64{} && (friends & ce_d_p) == u64{})
+                result |= ce_d_p;
+
+            if (ce_d_n && (enemies & c_d_n) == u64{} && (friends & ce_d_n) == u64{})
+                result |= ce_d_n;
+        }
+
+        return result;
+    }
+
+    auto generate_legal_destinations(BoardPosition const from, Position const& position) -> u64
+    {
+        auto const friend_pieces = position.board()[position.player_to_move()];
+        auto const enemy_pieces = position.board()[!position.player_to_move()];
+        return generate_legal_destinations_impl(from, friend_pieces, enemy_pieces);
+    }
+
+    auto generate_moves_impl(BitBoard const friends, BitBoard const enemies) -> MoveList
+    {
+        auto const all_pieces = enemies | friends;
 
         auto list = MoveList{};
 
-        auto pieces_to_process = friend_pieces;
+        auto pieces_to_process = friends;
         while (pieces_to_process)
         {
-            auto const pos = position_from_board(pieces_to_process);
-            pieces_to_process ^= board_from_position(pos);
+            auto const pos = position_from_bit_board(pieces_to_process);
+            pieces_to_process ^= bit_board_from_position(pos);
 
             auto const positive = (~u64{}) << u64(pos);
             auto const negative = ~positive;
@@ -155,15 +200,15 @@ namespace
 
                 assert(pop_count(circle_edge & dir & positive) <= 1);
 
-                if (ce_d_p && (enemy_pieces & c_d_p) == u64{} && (friend_pieces & ce_d_p) == u64{})
+                if (ce_d_p && (enemies & c_d_p) == u64{} && (friends & ce_d_p) == u64{})
                 {
-                    auto const to = position_from_board(ce_d_p);
+                    auto const to = position_from_bit_board(ce_d_p);
                     list.push_back({BoardPosition{pos}, BoardPosition{to}});
                 }
 
-                if (ce_d_n && (enemy_pieces & c_d_n) == u64{} && (friend_pieces & ce_d_n) == u64{})
+                if (ce_d_n && (enemies & c_d_n) == u64{} && (friends & ce_d_n) == u64{})
                 {
-                    auto const to = position_from_board(ce_d_n);
+                    auto const to = position_from_bit_board(ce_d_n);
                     list.push_back({BoardPosition{pos}, BoardPosition{to}});
                 }
             }
@@ -233,6 +278,24 @@ auto is_legal_move(Move move, Position const& position) -> bool
     return std::find(all_moves.begin(), all_moves.end(), move) != all_moves.end();
 }
 
+auto list_legal_destinations(BoardPosition from, Position const& position)
+    -> std::vector<BoardPosition>
+{
+    auto destinations = generate_legal_destinations(from, position);
+
+    auto res = std::vector<BoardPosition>{};
+    res.reserve(8);
+
+    while (destinations)
+    {
+        auto const board_pos = position_from_bit_board(destinations);
+        res.emplace_back(board_pos);
+        destinations ^= bit_board_from_position(board_pos);
+    }
+
+    return res;
+}
+
 namespace
 {
     auto find_all_neighbours_of(BitBoard pieces, BitBoard board) -> u64
@@ -241,8 +304,8 @@ namespace
 
         while (pieces)
         {
-            auto const pos = position_from_board(pieces);
-            auto const pos_board = board_from_position(pos);
+            auto const pos = position_from_bit_board(pieces);
+            auto const pos_board = bit_board_from_position(pos);
 
             auto const circle = all_circles.data[pos][1];
             auto const edge = circle ^ pos_board;
@@ -263,8 +326,8 @@ namespace
 
 auto are_pieces_all_together(BitBoard const board) -> bool
 {
-    auto const pos = position_from_board(board);
-    auto const pos_board = board_from_position(pos);
+    auto const pos = position_from_bit_board(board);
+    auto const pos_board = bit_board_from_position(pos);
 
     auto const blob = find_all_neighbours_of(pos_board, board);
 
