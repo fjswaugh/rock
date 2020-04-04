@@ -24,11 +24,7 @@ if (${CMAKE_VERSION} VERSION_LESS 3.14)
     endmacro()
 endif()
 
-# TODO
-# For now, we set this to true so that the fmt library works with pybind11
-# Unclear on the reasons, but will investigate further
-set(BUILD_SHARED_LIBS TRUE)
-
+# TODO: find out better way to set flags
 set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native")
@@ -43,14 +39,9 @@ FetchContent_Declare(
     GIT_TAG        5.3.0)
 FetchContent_MakeAvailable(fmtlib)
 
-FetchContent_Declare(
-    pybind11
-    GIT_REPOSITORY https://github.com/pybind/pybind11.git
-    GIT_TAG        v2.4.3)
-FetchContent_MakeAvailable(pybind11)
-
 add_subdirectory(src)
-add_subdirectory(apps)
 
-include(CTest)
-add_subdirectory(test)
+if (CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+    include(CTest)
+    add_subdirectory(test)
+endif()
