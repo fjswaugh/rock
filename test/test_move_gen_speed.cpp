@@ -1,5 +1,5 @@
 #include "rock/algorithms.h"
-#include "rock/starting_board.h"
+#include "rock/starting_position.h"
 #include <doctest/doctest.h>
 #include <fmt/ostream.h>
 #include <chrono>

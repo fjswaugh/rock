@@ -7,7 +7,7 @@ add_library(rock
     ../include/rock/common.h
     ../include/rock/format.h
     ../include/rock/parse.h
-    ../include/rock/starting_board.h
+    ../include/rock/starting_position.h
     ../include/rock/types.h)
 
 target_include_directories(rock PUBLIC ../include PRIVATE .)
