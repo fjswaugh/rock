@@ -149,24 +149,6 @@ struct Move
     }
 };
 
-constexpr auto apply_move(Move const m, Board b, Player const player) -> Board
-{
-    auto const from = m.from.bit_board();
-    auto const to = m.to.bit_board();
-
-    b[player] ^= (from | to);
-    b[!player] &= ~to;
-
-    return b;
-}
-
-constexpr auto apply_move(Move const m, Position p) -> Position
-{
-    p.set_board(apply_move(m, p.board(), p.player_to_move()));
-    p.set_player_to_move(!p.player_to_move());
-    return p;
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // GameOutcome
 ////////////////////////////////////////////////////////////////////////////////////////////////////

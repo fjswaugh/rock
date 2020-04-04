@@ -4,34 +4,71 @@
 #include <algorithm>
 #include <climits>
 
+// TODO:
+// Consider a little more consistency in naming of internal functions
+// - Consider moving away from upfront generation of moves
+//   - Perhaps use code like in list_legal_destinations()
+//   - Should be faster than separating into individual move objects anyway
+//   - Reconsider integer type used to store board position if this is done
+//     - No longer needs to be compact (may perform better if not)
+// - Remove duplication in list_legal_destinations() and generate_moves()
+// - Separate bitwise stuff into separate header
+// - Remove separate search algorithms
+//   - Should probably work out some performance regression testing
+// - Consider better algorithm for detemining if game is over
+//   - This check is probably done too many times in the search code
+// - Create some kind of stateful AI object to remember information
+
 namespace rock
 {
 
-struct MoveList
+namespace
 {
-    constexpr void push_back(Move move)
+    auto apply_move_low_level(Move const m, BitBoard* mine, BitBoard* theirs) -> void
     {
-        assert(size_ < max_size);
-        moves_[size_++] = move;
+        auto const from = m.from.bit_board();
+        auto const to = m.to.bit_board();
+
+        mine->data ^= (from | to);
+        theirs->data &= ~to;
     }
-    constexpr auto begin() const -> Move const* { return &moves_[0]; }
-    constexpr auto end() const -> Move const* { return this->begin() + size_; }
-    constexpr auto begin() -> Move* { return &moves_[0]; }
-    constexpr auto end() -> Move* { return this->begin() + size_; }
-    constexpr auto size() const { return size_; }
+}  // namespace
 
-    constexpr Move& operator[](std::size_t i) { return moves_[i]; }
-    constexpr Move operator[](std::size_t i) const { return moves_[i]; }
+auto apply_move(Move const m, Board b, Player const player) -> Board
+{
+    apply_move_low_level(m, &b[player], &b[!player]);
+    return b;
+}
 
-private:
-    constexpr static auto max_size = 12 * 8;
-
-    Move moves_[max_size];
-    std::size_t size_{};
-};
+auto apply_move(Move const m, Position p) -> Position
+{
+    p.set_board(apply_move(m, p.board(), p.player_to_move()));
+    p.set_player_to_move(!p.player_to_move());
+    return p;
+}
 
 namespace
 {
+    struct MoveList
+    {
+        constexpr void push_back(Move move)
+        {
+            assert(size_ < max_size);
+            moves_[size_++] = move;
+        }
+        constexpr auto begin() const -> Move const* { return &moves_[0]; }
+        constexpr auto end() const -> Move const* { return this->begin() + size_; }
+        constexpr auto begin() -> Move* { return &moves_[0]; }
+        constexpr auto end() -> Move* { return this->begin() + size_; }
+        constexpr auto size() const { return size_; }
+
+    private:
+        constexpr static auto max_size = 12 * 8;
+
+        Move moves_[max_size];
+        std::size_t size_{};
+    };
+
     constexpr double big = 1000.0;
 
     template <typename T, std::size_t N>
@@ -161,9 +198,9 @@ namespace
 
     auto generate_legal_destinations(BoardPosition const from, Position const& position) -> u64
     {
-        auto const friend_pieces = position.board()[position.player_to_move()];
-        auto const enemy_pieces = position.board()[!position.player_to_move()];
-        return generate_legal_destinations_impl(from, friend_pieces, enemy_pieces);
+        auto const friends = position.board()[position.player_to_move()];
+        auto const enemies = position.board()[!position.player_to_move()];
+        return generate_legal_destinations_impl(from, friends, enemies);
     }
 
     auto generate_moves_impl(BitBoard const friends, BitBoard const enemies) -> MoveList
@@ -217,15 +254,6 @@ namespace
         return list;
     }
 
-    auto apply_move_low_level(Move const m, BitBoard* mine, BitBoard* theirs) -> void
-    {
-        auto const from = m.from.bit_board();
-        auto const to = m.to.bit_board();
-
-        mine->data ^= (from | to);
-        theirs->data &= ~to;
-    }
-
     auto count_moves_impl(BitBoard const friends, BitBoard const enemies, int level) -> std::size_t
     {
         if (level <= 0)
@@ -252,9 +280,9 @@ namespace
 
     auto generate_moves(Position const& position) -> MoveList
     {
-        auto const friend_pieces = position.board()[position.player_to_move()];
-        auto const enemy_pieces = position.board()[!position.player_to_move()];
-        return generate_moves_impl(friend_pieces, enemy_pieces);
+        auto const friends = position.board()[position.player_to_move()];
+        auto const enemies = position.board()[!position.player_to_move()];
+        return generate_moves_impl(friends, enemies);
     }
 }  // namespace
 
@@ -456,7 +484,7 @@ namespace
         return {best_move, best_score};
     }
 
-    [[maybe_unused]] auto recommend_move_negamax_ab_killer(
+    auto recommend_move_negamax_ab_killer(
         BitBoard const friends,
         BitBoard const enemies,
         int depth,
