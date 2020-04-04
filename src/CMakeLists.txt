@@ -4,6 +4,8 @@ add_library(rock
     format.cpp
     table_generation.h
     game.cpp
+    fen.cpp
+    ../include/rock/fen.h
     ../include/rock/game.h
     ../include/rock/algorithms.h
     ../include/rock/common.h
