@@ -23,7 +23,7 @@ namespace BoardFormatMode
     constexpr u64 Default = OuterSpaces | InnerSpaces | OuterBoundaries | InnerBoundaries |
         LabelLeft | LabelBottom | UpperCasePieces;
     constexpr u64 Compact = 0;
-}
+}  // namespace BoardFormatMode
 
 struct BoardFormat
 {
@@ -62,7 +62,6 @@ struct formatter<rock::GameOutcome> : formatter<std::string_view>
         auto const s = [o] {
             switch (o)
             {
-            default:
             case rock::GameOutcome::Ongoing:
                 return "Ongoing";
             case rock::GameOutcome::WhiteWins:
@@ -72,6 +71,7 @@ struct formatter<rock::GameOutcome> : formatter<std::string_view>
             case rock::GameOutcome::Draw:
                 return "Draw";
             }
+            return "";
         }();
 
         return formatter<std::string_view>::format(s, ctx);
@@ -86,7 +86,7 @@ struct formatter<rock::Board>
     template <typename FormatContext>
     auto format(rock::Board const& board, FormatContext& ctx)
     {
-        return format_to(ctx.out(), "{}", rock::to_string(board, bf));
+        return format_to(ctx.out(), rock::to_string(board, bf));
     }
 
     rock::BoardFormat bf{};
@@ -100,7 +100,7 @@ struct formatter<rock::BitBoard>
     template <typename FormatContext>
     auto format(rock::BitBoard const& board, FormatContext& ctx)
     {
-        return format_to(ctx.out(), "{}", rock::to_string(board));
+        return format_to(ctx.out(), rock::to_string(board));
     }
 };
 
@@ -112,7 +112,9 @@ struct formatter<rock::BoardPosition>
     template <typename FormatContext>
     auto format(rock::BoardPosition pos, FormatContext& ctx)
     {
-        return format_to(ctx.out(), "{}{}", static_cast<char>(pos.x() + 'A'), pos.y() + 1);
+        auto const col = static_cast<char>(pos.x() + 'a');
+        auto const row = static_cast<char>(pos.y() + '1');
+        return format_to(ctx.out(), "{}{}", col, row);
     }
 };
 
@@ -126,7 +128,7 @@ struct formatter<rock::Move>
     {
         auto const from = rock::BoardPosition{m.from};
         auto const to = rock::BoardPosition{m.to};
-        return format_to(ctx.out(), "{} -> {}", from, to);
+        return format_to(ctx.out(), "{}-{}", from, to);
     }
 };
 

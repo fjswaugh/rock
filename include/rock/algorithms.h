@@ -2,13 +2,16 @@
 
 #include "types.h"
 #include <utility>
+#include <vector>
 
 namespace rock
 {
 
-auto generate_moves(Board const& board, Player player) -> MoveList;
-auto count_moves(Board const& board, Player player_to_move, int level = 1) -> std::size_t;
+auto list_moves(Board const& board, Player) -> std::vector<Move>;
+auto count_moves(Board const& board, Player, int level = 1) -> std::size_t;
 auto is_legal_move(Move, Board const&, Player) -> bool;
+auto list_legal_destinations(BoardPosition from, Board const&, Player)
+    -> std::vector<BoardPosition>;
 
 auto are_pieces_all_together(BitBoard board) -> bool;
 auto get_game_outcome(Board const&, Player to_move) -> GameOutcome;

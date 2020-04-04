@@ -6,6 +6,29 @@
 namespace rock
 {
 
+struct MoveList
+{
+    constexpr void push_back(Move move)
+    {
+        assert(size_ < max_size);
+        moves_[size_++] = move;
+    }
+    constexpr auto begin() const -> Move const* { return &moves_[0]; }
+    constexpr auto end() const -> Move const* { return this->begin() + size_; }
+    constexpr auto begin() -> Move* { return &moves_[0]; }
+    constexpr auto end() -> Move* { return this->begin() + size_; }
+    constexpr auto size() const { return size_; }
+
+    constexpr Move& operator[](std::size_t i) { return moves_[i]; }
+    constexpr Move operator[](std::size_t i) const { return moves_[i]; }
+
+private:
+    constexpr static auto max_size = 12 * 8;
+
+    Move moves_[max_size];
+    std::size_t size_{};
+};
+
 namespace
 {
     constexpr double big = 1000.0;
@@ -16,62 +39,68 @@ namespace
     constexpr auto all_circles = make_all_circles();
     constexpr auto all_directions = make_all_directions();
 
-    auto pop_count(u64 x) -> u64 { return __builtin_popcountl(x); }
-    auto position_from_board(u64 x) -> u64 { return __builtin_ctzl(x); }
-    constexpr auto board_from_position(u8 pos) -> u64 { return u64(1) << u64(pos); }
-}  // namespace
+    auto pop_count(u64 x) -> int { return __builtin_popcountl(x); }
+    auto position_from_board(u64 x) -> int { return __builtin_ctzl(x); }
+    constexpr auto board_from_position(int pos) -> u64 { return u64(1) << u64(pos); }
 
-auto generate_moves(Board const& board, Player player) -> MoveList
-{
-    auto const enemy_pieces = board[!player];
-    auto const friend_pieces = board[player];
-    auto const all_pieces = enemy_pieces | friend_pieces;
-
-    auto list = MoveList{};
-
-    auto pieces_to_process = friend_pieces;
-    while (pieces_to_process)
+    auto generate_moves(Board const& board, Player player) -> MoveList
     {
-        auto const pos = position_from_board(pieces_to_process);
-        pieces_to_process ^= board_from_position(pos);
+        auto const enemy_pieces = board[!player];
+        auto const friend_pieces = board[player];
+        auto const all_pieces = enemy_pieces | friend_pieces;
 
-        auto const positive = (~u64{}) << u64(pos);
-        auto const negative = ~positive;
+        auto list = MoveList{};
 
-        array_ref<u64, 4> directions = all_directions.data[pos];
-        array_ref<u64, 8> circles = all_circles.data[pos];
-
-        for (u64 const dir : directions)
+        auto pieces_to_process = friend_pieces;
+        while (pieces_to_process)
         {
-            auto const possible_distance = pop_count(dir & all_pieces);
+            auto const pos = position_from_board(pieces_to_process);
+            pieces_to_process ^= board_from_position(pos);
 
-            u64 const circle = circles[possible_distance - 1];
-            u64 const circle_edge = circles[std::min(u64(7), possible_distance)] ^ circle;
+            auto const positive = (~u64{}) << u64(pos);
+            auto const negative = ~positive;
 
-            auto const d_p = dir & positive;
-            auto const d_n = dir & negative;
-            auto const ce_d_p = circle_edge & d_p;
-            auto const ce_d_n = circle_edge & d_n;
-            auto const c_d_p = circle & d_p;
-            auto const c_d_n = circle & d_n;
+            array_ref<u64, 4> directions = all_directions.data[pos];
+            array_ref<u64, 8> circles = all_circles.data[pos];
 
-            assert(pop_count(circle_edge & dir & positive) <= 1);
-
-            if (ce_d_p && (enemy_pieces & c_d_p) == u64{} && (friend_pieces & ce_d_p) == u64{})
+            for (u64 const dir : directions)
             {
-                auto const to = position_from_board(ce_d_p);
-                list.push_back({BoardPosition{pos}, BoardPosition{to}});
-            }
+                auto const possible_distance = pop_count(dir & all_pieces);
 
-            if (ce_d_n && (enemy_pieces & c_d_n) == u64{} && (friend_pieces & ce_d_n) == u64{})
-            {
-                auto const to = position_from_board(ce_d_n);
-                list.push_back({BoardPosition{pos}, BoardPosition{to}});
+                u64 const circle = circles[possible_distance - 1];
+                u64 const circle_edge = circles[std::min(7, possible_distance)] ^ circle;
+
+                auto const d_p = dir & positive;
+                auto const d_n = dir & negative;
+                auto const ce_d_p = circle_edge & d_p;
+                auto const ce_d_n = circle_edge & d_n;
+                auto const c_d_p = circle & d_p;
+                auto const c_d_n = circle & d_n;
+
+                assert(pop_count(circle_edge & dir & positive) <= 1);
+
+                if (ce_d_p && (enemy_pieces & c_d_p) == u64{} && (friend_pieces & ce_d_p) == u64{})
+                {
+                    auto const to = position_from_board(ce_d_p);
+                    list.push_back({BoardPosition{pos}, BoardPosition{to}});
+                }
+
+                if (ce_d_n && (enemy_pieces & c_d_n) == u64{} && (friend_pieces & ce_d_n) == u64{})
+                {
+                    auto const to = position_from_board(ce_d_n);
+                    list.push_back({BoardPosition{pos}, BoardPosition{to}});
+                }
             }
         }
-    }
 
-    return list;
+        return list;
+    }
+}  // namespace
+
+auto list_moves(Board const& board, Player player) -> std::vector<Move>
+{
+    auto const moves = generate_moves(board, player);
+    return std::vector(moves.begin(), moves.end());
 }
 
 auto count_moves(Board const& board, Player player_to_move, int level) -> std::size_t

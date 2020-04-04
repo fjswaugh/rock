@@ -48,7 +48,7 @@ struct BoardPosition
     {}
 
     constexpr auto data() const -> u8 { return data_; }
-    explicit constexpr operator u8() const { return data_; };
+    explicit constexpr operator u8() const { return data_; }
 
     constexpr auto x() const -> int { return data_ % 8; }
     constexpr auto y() const -> int { return data_ / 8; }
@@ -118,29 +118,6 @@ struct Move
     {
         return m1.from == m2.from && m1.to == m2.to;
     }
-};
-
-struct MoveList
-{
-    constexpr void push_back(Move move)
-    {
-        assert(size_ != 12 * 8);
-        moves_[size_++] = move;
-    }
-    constexpr auto begin() const -> Move const* { return &moves_[0]; }
-    constexpr auto end() const -> Move const* { return this->begin() + size_; }
-    constexpr auto begin() -> Move* { return &moves_[0]; }
-    constexpr auto end() -> Move* { return this->begin() + size_; }
-    constexpr auto size() const { return size_; }
-
-    constexpr Move& operator[](std::size_t i) { return moves_[i]; }
-    constexpr Move operator[](std::size_t i) const { return moves_[i]; }
-
-private:
-    constexpr static auto max_size = 12 * 8;
-
-    Move moves_[max_size];
-    std::size_t size_{};
 };
 
 constexpr auto apply_move(Move const m, Board b, Player const player) -> Board
