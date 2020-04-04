@@ -2,6 +2,7 @@
 #include "rock/parse.h"
 #include "table_generation.h"
 #include <algorithm>
+#include <climits>
 
 namespace rock
 {
@@ -39,8 +40,85 @@ namespace
     constexpr auto all_circles = make_all_circles();
     constexpr auto all_directions = make_all_directions();
 
-    auto pop_count(u64 x) -> u64 { return __builtin_popcountl(x); }
-    auto position_from_board(u64 x) -> u64 { return __builtin_ctzl(x); }
+    static_assert(CHAR_BIT == 8);
+
+    template <typename T>
+    [[maybe_unused]] constexpr auto num_bits = sizeof(T) * 8;
+
+    [[maybe_unused]] inline auto pop_count_manual(u64 x) -> u64
+    {
+        // clang-format off
+        static constexpr int const s[] = {1, 2, 4, 8, 16, 32};
+        static constexpr u64 const b[] = {
+            0x5555555555555555,
+            0x3333333333333333,
+            0x0F0F0F0F0F0F0F0F,
+            0x00FF00FF00FF00FF,
+            0x0000FFFF0000FFFF,
+            0x00000000FFFFFFFF,
+        };
+
+        u64 c;
+        c = x - ((x >> u64{1}) & b[0]);
+        c = ((c >> s[1]) & b[1]) + (c & b[1]);
+        c = ((c >> s[2]) + c) & b[2];
+        c = ((c >> s[3]) + c) & b[3];
+        c = ((c >> s[4]) + c) & b[4];
+        c = ((c >> s[5]) + c) & b[5];
+        return c;
+        // clang-format on
+    }
+
+    [[maybe_unused]] inline auto position_from_board_manual(u64 x) -> u64
+    {
+        // clang-format off
+        auto c = u64{64};
+        x &= static_cast<u64>(-static_cast<std::int64_t>(x));
+        if (x) c--;
+        if (x & u64{0x00000000FFFFFFFF}) c -= 32;
+        if (x & u64{0x0000FFFF0000FFFF}) c -= 16;
+        if (x & u64{0x00FF00FF00FF00FF}) c -=  8;
+        if (x & u64{0x0F0F0F0F0F0F0F0F}) c -=  4;
+        if (x & u64{0x3333333333333333}) c -=  2;
+        if (x & u64{0x5555555555555555}) c -=  1;
+        return c;
+        // clang-format on
+    }
+
+    inline auto pop_count(u64 x) -> u64
+    {
+#if defined(__GNUC__)
+        if constexpr (num_bits<unsigned long> == 64)
+        {
+            return static_cast<u64>(__builtin_popcountl(x));
+        }
+        else
+        {
+            static_assert(num_bits<unsigned long long> == 64);
+            return static_cast<u64>(__builtin_popcountll(x));
+        }
+#else
+        return pop_count_manual(x);
+#endif
+    }
+
+    inline auto position_from_board(u64 x) -> u64
+    {
+#if defined(__GNUC__)
+        if constexpr (num_bits<unsigned long> == 64)
+        {
+            return static_cast<u64>(__builtin_ctzl(x));
+        }
+        else
+        {
+            static_assert(num_bits<unsigned long long> == 64);
+            return static_cast<u64>(__builtin_ctzll(x));
+        }
+#else
+        return position_from_board_manual(x);
+#endif
+    }
+
     constexpr auto board_from_position(u64 pos) -> u64 { return u64(1) << u64(pos); }
 
     auto generate_moves_impl(BitBoard friend_pieces, BitBoard enemy_pieces) -> MoveList
@@ -240,7 +318,8 @@ namespace
             are_pieces_all_together(enemies);
     }
 
-    auto recommend_move_negamax(BitBoard const friends, BitBoard const enemies, int const depth)
+    [[maybe_unused]] auto
+    recommend_move_negamax(BitBoard const friends, BitBoard const enemies, int const depth)
         -> MoveRecommendation
     {
         if (depth == 0 || is_game_finished(friends, enemies))
@@ -269,7 +348,7 @@ namespace
         return {best_move, best_score};
     }
 
-    auto recommend_move_negamax_ab(
+    [[maybe_unused]] auto recommend_move_negamax_ab(
         BitBoard const friends, BitBoard const enemies, int depth, double alpha, double beta)
         -> MoveRecommendation
     {
@@ -314,7 +393,7 @@ namespace
         return {best_move, best_score};
     }
 
-    auto recommend_move_negamax_ab_killer(
+    [[maybe_unused]] auto recommend_move_negamax_ab_killer(
         BitBoard const friends,
         BitBoard const enemies,
         int depth,

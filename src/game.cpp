@@ -49,7 +49,7 @@ auto Game::current_status() const -> GameOutcome
 
 auto Game::most_recent_move() const -> Move
 {
-    assert(i > 0);
+    assert(i_ > 0);
     return moves_[i_ - 1];
 }
 
