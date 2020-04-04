@@ -6,6 +6,7 @@ FetchContent_MakeAvailable(doctest)
 
 add_executable(rock_test
     main.cpp
+    test_move_gen_speed.cpp
     test_parse.cpp)
 
 target_compile_features(rock_test PRIVATE cxx_std_17)

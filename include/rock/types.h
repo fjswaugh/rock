@@ -99,6 +99,9 @@ constexpr auto BoardPosition::board() const -> BitBoard
 
 struct Board
 {
+    constexpr Board() = default;
+    constexpr Board(BitBoard white, BitBoard black) : boards_{white, black} {}
+
     constexpr auto pieces_for(Player p) -> BitBoard& { return boards_[static_cast<bool>(p)]; }
     constexpr auto operator[](Player p) -> BitBoard& { return boards_[static_cast<bool>(p)]; }
 

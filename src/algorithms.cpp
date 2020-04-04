@@ -39,14 +39,12 @@ namespace
     constexpr auto all_circles = make_all_circles();
     constexpr auto all_directions = make_all_directions();
 
-    auto pop_count(u64 x) -> int { return __builtin_popcountl(x); }
-    auto position_from_board(u64 x) -> int { return __builtin_ctzl(x); }
-    constexpr auto board_from_position(int pos) -> u64 { return u64(1) << u64(pos); }
+    auto pop_count(u64 x) -> u64 { return __builtin_popcountl(x); }
+    auto position_from_board(u64 x) -> u64 { return __builtin_ctzl(x); }
+    constexpr auto board_from_position(u64 pos) -> u64 { return u64(1) << u64(pos); }
 
-    auto generate_moves(Position const& position) -> MoveList
+    auto generate_moves_impl(BitBoard friend_pieces, BitBoard enemy_pieces) -> MoveList
     {
-        auto const enemy_pieces = position.board()[!position.player_to_move()];
-        auto const friend_pieces = position.board()[position.player_to_move()];
         auto const all_pieces = enemy_pieces | friend_pieces;
 
         auto list = MoveList{};
@@ -68,7 +66,7 @@ namespace
                 auto const possible_distance = pop_count(dir & all_pieces);
 
                 u64 const circle = circles[possible_distance - 1];
-                u64 const circle_edge = circles[std::min(7, possible_distance)] ^ circle;
+                u64 const circle_edge = circles[std::min(u64{7}, possible_distance)] ^ circle;
 
                 auto const d_p = dir & positive;
                 auto const d_n = dir & negative;
@@ -95,6 +93,46 @@ namespace
 
         return list;
     }
+
+    auto apply_move_low_level(Move const m, BitBoard* mine, BitBoard* theirs) -> void
+    {
+        auto const from = m.from.board();
+        auto const to = m.to.board();
+
+        mine->data ^= (from | to);
+        theirs->data &= ~to;
+    }
+
+    auto count_moves_impl(BitBoard const friends, BitBoard const enemies, int level) -> std::size_t
+    {
+        if (level <= 0)
+            return 1;
+
+        auto moves = generate_moves_impl(friends, enemies);
+
+        if (level == 1)
+            return moves.size();
+
+        auto num_moves = std::size_t{};
+
+        for (auto const move : moves)
+        {
+            auto enemies_copy = enemies;
+            auto friends_copy = friends;
+            apply_move_low_level(move, &friends_copy, &enemies_copy);
+
+            num_moves += count_moves_impl(enemies_copy, friends_copy, level - 1);
+        }
+
+        return num_moves;
+    }
+
+    auto generate_moves(Position const& position) -> MoveList
+    {
+        auto const friend_pieces = position.board()[position.player_to_move()];
+        auto const enemy_pieces = position.board()[!position.player_to_move()];
+        return generate_moves_impl(friend_pieces, enemy_pieces);
+    }
 }  // namespace
 
 auto list_moves(Position const& position) -> std::vector<Move>
@@ -105,23 +143,10 @@ auto list_moves(Position const& position) -> std::vector<Move>
 
 auto count_moves(Position const& position, int level) -> std::size_t
 {
-    if (level <= 0)
-        return 1;
-
-    auto moves = generate_moves(position);
-
-    if (level == 1)
-        return moves.size();
-
-    auto num_moves = std::size_t{};
-
-    for (auto const move : moves)
-    {
-        auto const new_position = apply_move(move, position);
-        num_moves += count_moves(new_position, level - 1);
-    }
-
-    return num_moves;
+    return count_moves_impl(
+        position.board()[position.player_to_move()],
+        position.board()[!position.player_to_move()],
+        level);
 }
 
 auto is_legal_move(Move move, Position const& position) -> bool
@@ -190,40 +215,48 @@ namespace
         {all_circles.data[BoardPosition{3, 3}.data()][1], 1.0},
     };
 
-    auto evaluate_leaf_position(Position const& position) -> double
+    auto evaluate_leaf_position(BitBoard friends, BitBoard enemies) -> double
     {
-        auto const player_pieces = position.board()[position.player_to_move()];
-        auto const opponent_pieces = position.board()[!position.player_to_move()];
-
         auto res = double{};
 
-        bool const has_player_won = are_pieces_all_together(player_pieces);
-        bool const has_player_lost = are_pieces_all_together(opponent_pieces);
+        bool const has_player_won = are_pieces_all_together(friends);
+        bool const has_player_lost = are_pieces_all_together(enemies);
 
         if (has_player_lost || has_player_won)
             res += 1000.0 * static_cast<double>(has_player_won - has_player_lost);
 
         for (auto const& [positions, value] : important_positions)
         {
-            res += value * static_cast<double>(pop_count(positions & player_pieces));
-            res -= value * static_cast<double>(pop_count(positions & opponent_pieces));
+            res += value * static_cast<double>(pop_count(positions & friends));
+            res -= value * static_cast<double>(pop_count(positions & enemies));
         }
 
         return res;
     }
 
-    auto recommend_move_negamax(Position const& position, int depth) -> MoveRecommendation
+    auto is_game_finished(BitBoard friends, BitBoard enemies) -> bool
     {
-        if (depth == 0 || get_game_outcome(position) != GameOutcome::Ongoing)
-            return {{}, evaluate_leaf_position(position)};
+        return count_moves_impl(friends, enemies, 1) == 0 || are_pieces_all_together(friends) ||
+            are_pieces_all_together(enemies);
+    }
+
+    auto recommend_move_negamax(BitBoard const friends, BitBoard const enemies, int const depth)
+        -> MoveRecommendation
+    {
+        if (depth == 0 || is_game_finished(friends, enemies))
+            return {{}, evaluate_leaf_position(friends, enemies)};
 
         auto best_score = -big;
         auto best_move = Move{};
 
-        for (auto move : generate_moves(position))
+        for (auto move : generate_moves_impl(friends, enemies))
         {
-            auto const new_position = apply_move(move, position);
-            auto const recommendation = recommend_move_negamax(new_position, depth - 1);
+            auto friends_copy = friends;
+            auto enemies_copy = enemies;
+            apply_move_low_level(move, &friends_copy, &enemies_copy);
+
+            auto const recommendation =
+                recommend_move_negamax(enemies_copy, friends_copy, depth - 1);
             auto const score = -recommendation.score;
 
             if (score > best_score)
@@ -236,20 +269,24 @@ namespace
         return {best_move, best_score};
     }
 
-    auto recommend_move_negamax_ab(Position const& position, int depth, double alpha, double beta)
+    auto recommend_move_negamax_ab(
+        BitBoard const friends, BitBoard const enemies, int depth, double alpha, double beta)
         -> MoveRecommendation
     {
-        if (depth == 0 || get_game_outcome(position) != GameOutcome::Ongoing)
-            return {{}, evaluate_leaf_position(position)};
+        if (depth == 0 || is_game_finished(friends, enemies))
+            return {{}, evaluate_leaf_position(friends, enemies)};
 
         auto best_score = -big;
         auto best_move = Move{};
 
-        for (auto move : generate_moves(position))
+        for (auto move : generate_moves_impl(friends, enemies))
         {
-            auto const new_position = apply_move(move, position);
+            auto friends_copy = friends;
+            auto enemies_copy = enemies;
+            apply_move_low_level(move, &friends_copy, &enemies_copy);
+
             auto const recommendation =
-                recommend_move_negamax_ab(new_position, depth - 1, -beta, -alpha);
+                recommend_move_negamax_ab(enemies_copy, friends_copy, depth - 1, -beta, -alpha);
             auto const score = -recommendation.score;
 
             if (score > best_score)
@@ -278,19 +315,20 @@ namespace
     }
 
     auto recommend_move_negamax_ab_killer(
-        Position const& position,
+        BitBoard const friends,
+        BitBoard const enemies,
         int depth,
         double alpha,
         double beta,
         std::optional<Move> killer_move) -> MoveRecommendation
     {
-        if (depth == 0 || get_game_outcome(position) != GameOutcome::Ongoing)
-            return {{}, evaluate_leaf_position(position)};
+        if (depth == 0 || is_game_finished(friends, enemies))
+            return {{}, evaluate_leaf_position(friends, enemies)};
 
         auto best_score = -big;
         auto best_move = Move{};
 
-        auto all_moves = generate_moves(position);
+        auto all_moves = generate_moves_impl(friends, enemies);
 
         if (killer_move)
         {
@@ -305,9 +343,12 @@ namespace
 
         for (auto move : all_moves)
         {
-            auto const new_position = apply_move(move, position);
+            auto friends_copy = friends;
+            auto enemies_copy = enemies;
+            apply_move_low_level(move, &friends_copy, &enemies_copy);
+
             auto const recommendation = recommend_move_negamax_ab_killer(
-                new_position, depth - 1, -beta, -alpha, killer_move);
+                enemies_copy, friends_copy, depth - 1, -beta, -alpha, killer_move);
             auto const score = -recommendation.score;
 
             if (score > best_score)
@@ -339,7 +380,13 @@ namespace
 
 auto recommend_move(Position const& position) -> MoveRecommendation
 {
-    return recommend_move_negamax_ab_killer(position, 6, -big, big, {});
+    return recommend_move_negamax_ab_killer(
+        position.board()[position.player_to_move()],
+        position.board()[!position.player_to_move()],
+        6,
+        -big,
+        big,
+        {});
 }
 
 auto evaluate_position(Position const& position) -> double
