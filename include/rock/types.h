@@ -118,6 +118,7 @@ private:
 
 struct Position
 {
+    constexpr Position() = default;
     constexpr Position(Board const& board, Player player_to_move)
         : board_{board}, player_to_move_{player_to_move}
     {}
@@ -129,8 +130,8 @@ struct Position
     constexpr auto set_player_to_move(Player p) -> void { player_to_move_ = p; }
 
 private:
-    Board board_;
-    Player player_to_move_;
+    Board board_{};
+    Player player_to_move_{};
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
