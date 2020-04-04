@@ -96,8 +96,8 @@ namespace
 
     auto apply_move_low_level(Move const m, BitBoard* mine, BitBoard* theirs) -> void
     {
-        auto const from = m.from.board();
-        auto const to = m.to.board();
+        auto const from = m.from.bit_board();
+        auto const to = m.to.bit_board();
 
         mine->data ^= (from | to);
         theirs->data &= ~to;

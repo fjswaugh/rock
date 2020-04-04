@@ -53,7 +53,7 @@ struct BoardPosition
     constexpr auto x() const -> int { return data_ % 8; }
     constexpr auto y() const -> int { return data_ / 8; }
 
-    constexpr auto board() const -> BitBoard;
+    constexpr auto bit_board() const -> BitBoard;
 
     friend constexpr auto operator<(BoardPosition p1, BoardPosition p2) -> bool
     {
@@ -83,16 +83,16 @@ struct BitBoard
     constexpr operator u64() const { return data; }
     constexpr operator u64&() { return data; }
 
-    constexpr auto at(BoardPosition pos) const -> bool { return data & pos.board(); }
+    constexpr auto at(BoardPosition pos) const -> bool { return data & pos.bit_board(); }
 
-    constexpr auto set_bit(BoardPosition pos) -> void { data |= pos.board(); }
-    constexpr auto flip_bit(BoardPosition pos) -> void { data ^= pos.board(); }
-    constexpr auto clear_bit(BoardPosition pos) -> void { data &= ~pos.board(); }
+    constexpr auto set_bit(BoardPosition pos) -> void { data |= pos.bit_board(); }
+    constexpr auto flip_bit(BoardPosition pos) -> void { data ^= pos.bit_board(); }
+    constexpr auto clear_bit(BoardPosition pos) -> void { data &= ~pos.bit_board(); }
 
     u64 data{};
 };
 
-constexpr auto BoardPosition::board() const -> BitBoard
+constexpr auto BoardPosition::bit_board() const -> BitBoard
 {
     return BitBoard{u64{1} << u64{data_}};
 }
@@ -150,8 +150,8 @@ struct Move
 
 constexpr auto apply_move(Move const m, Board b, Player const player) -> Board
 {
-    auto const from = m.from.board();
-    auto const to = m.to.board();
+    auto const from = m.from.bit_board();
+    auto const to = m.to.bit_board();
 
     b[player] ^= (from | to);
     b[!player] &= ~to;
