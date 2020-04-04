@@ -6,6 +6,10 @@
 namespace rock
 {
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Player
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 enum struct Player : bool
 {
     White,
@@ -19,16 +23,12 @@ constexpr auto opponent_of(Player p) -> Player
 
 constexpr auto operator!(Player p) -> Player
 {
-    return Player{!static_cast<bool>(p)};
+    return opponent_of(p);
 }
 
-enum struct GameOutcome
-{
-    Ongoing = 0,
-    WhiteWins,
-    BlackWins,
-    Draw,
-};
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Board
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct BitBoard;
 
@@ -109,6 +109,31 @@ private:
     BitBoard boards_[2];
 };
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Position
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+struct Position
+{
+    constexpr Position(Board const& board, Player player_to_move)
+        : board_{board}, player_to_move_{player_to_move}
+    {}
+
+    constexpr auto board() const -> Board const& { return board_; }
+    constexpr auto player_to_move() const -> Player { return player_to_move_; }
+
+    constexpr auto set_board(Board const& b) -> void { board_ = b; }
+    constexpr auto set_player_to_move(Player p) -> void { player_to_move_ = p; }
+
+private:
+    Board board_;
+    Player player_to_move_;
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Move
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 struct Move
 {
     BoardPosition from;
@@ -130,5 +155,24 @@ constexpr auto apply_move(Move const m, Board b, Player const player) -> Board
 
     return b;
 }
+
+constexpr auto apply_move(Move const m, Position p) -> Position
+{
+    p.set_board(apply_move(m, p.board(), p.player_to_move()));
+    p.set_player_to_move(!p.player_to_move());
+    return p;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// GameOutcome
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+enum struct GameOutcome
+{
+    Ongoing = 0,
+    WhiteWins,
+    BlackWins,
+    Draw,
+};
 
 }  // namespace rock

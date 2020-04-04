@@ -32,9 +32,10 @@ struct BoardFormat
 };
 
 auto to_string(Player) -> std::string;
-auto to_string(Board const&, BoardFormat const& = {}) -> std::string;
-auto to_string(BitBoard) -> std::string;
 auto to_string(BoardPosition) -> std::string;
+auto to_string(BitBoard) -> std::string;
+auto to_string(Board const&, BoardFormat const& = {}) -> std::string;
+auto to_string(Position const&, BoardFormat const& = {}) -> std::string;
 auto to_string(Move) -> std::string;
 
 }  // namespace rock
@@ -79,17 +80,17 @@ struct formatter<rock::GameOutcome> : formatter<std::string_view>
 };
 
 template <>
-struct formatter<rock::Board>
+struct formatter<rock::BoardPosition>
 {
-    auto parse(format_parse_context& ctx) -> format_parse_context::iterator;
+    constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
 
     template <typename FormatContext>
-    auto format(rock::Board const& board, FormatContext& ctx)
+    auto format(rock::BoardPosition pos, FormatContext& ctx)
     {
-        return format_to(ctx.out(), rock::to_string(board, bf));
+        auto const col = static_cast<char>(pos.x() + 'a');
+        auto const row = static_cast<char>(pos.y() + '1');
+        return format_to(ctx.out(), "{}{}", col, row);
     }
-
-    rock::BoardFormat bf{};
 };
 
 template <>
@@ -105,16 +106,26 @@ struct formatter<rock::BitBoard>
 };
 
 template <>
-struct formatter<rock::BoardPosition>
+struct formatter<rock::Board>
 {
-    constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
+    auto parse(format_parse_context& ctx) -> format_parse_context::iterator;
 
     template <typename FormatContext>
-    auto format(rock::BoardPosition pos, FormatContext& ctx)
+    auto format(rock::Board const& board, FormatContext& ctx)
     {
-        auto const col = static_cast<char>(pos.x() + 'a');
-        auto const row = static_cast<char>(pos.y() + '1');
-        return format_to(ctx.out(), "{}{}", col, row);
+        return format_to(ctx.out(), rock::to_string(board, bf));
+    }
+
+    rock::BoardFormat bf{};
+};
+
+template <>
+struct formatter<rock::Position> : formatter<rock::Board>
+{
+    template <typename FormatContext>
+    auto format(rock::Position const& position, FormatContext& ctx)
+    {
+        return format_to(ctx.out(), rock::to_string(position, bf));
     }
 };
 

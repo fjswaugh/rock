@@ -43,10 +43,10 @@ namespace
     auto position_from_board(u64 x) -> int { return __builtin_ctzl(x); }
     constexpr auto board_from_position(int pos) -> u64 { return u64(1) << u64(pos); }
 
-    auto generate_moves(Board const& board, Player player) -> MoveList
+    auto generate_moves(Position const& position) -> MoveList
     {
-        auto const enemy_pieces = board[!player];
-        auto const friend_pieces = board[player];
+        auto const enemy_pieces = position.board()[!position.player_to_move()];
+        auto const friend_pieces = position.board()[position.player_to_move()];
         auto const all_pieces = enemy_pieces | friend_pieces;
 
         auto list = MoveList{};
@@ -97,18 +97,18 @@ namespace
     }
 }  // namespace
 
-auto list_moves(Board const& board, Player player) -> std::vector<Move>
+auto list_moves(Position const& position) -> std::vector<Move>
 {
-    auto const moves = generate_moves(board, player);
+    auto const moves = generate_moves(position);
     return std::vector(moves.begin(), moves.end());
 }
 
-auto count_moves(Board const& board, Player player_to_move, int level) -> std::size_t
+auto count_moves(Position const& position, int level) -> std::size_t
 {
     if (level <= 0)
         return 1;
 
-    auto moves = generate_moves(board, player_to_move);
+    auto moves = generate_moves(position);
 
     if (level == 1)
         return moves.size();
@@ -117,16 +117,16 @@ auto count_moves(Board const& board, Player player_to_move, int level) -> std::s
 
     for (auto const move : moves)
     {
-        auto const new_board = apply_move(move, board, player_to_move);
-        num_moves += count_moves(new_board, !player_to_move, level - 1);
+        auto const new_position = apply_move(move, position);
+        num_moves += count_moves(new_position, level - 1);
     }
 
     return num_moves;
 }
 
-auto is_legal_move(Move move, Board const& board, Player player) -> bool
+auto is_legal_move(Move move, Position const& position) -> bool
 {
-    auto const all_moves = generate_moves(board, player);
+    auto const all_moves = generate_moves(position);
     return std::find(all_moves.begin(), all_moves.end(), move) != all_moves.end();
 }
 
@@ -168,16 +168,16 @@ auto are_pieces_all_together(BitBoard const board) -> bool
     return (board ^ blob) == 0;
 }
 
-auto get_game_outcome(Board const& board, Player player_to_move) -> GameOutcome
+auto get_game_outcome(Position const& position) -> GameOutcome
 {
-    bool const w = are_pieces_all_together(board[Player::White]);
-    bool const b = are_pieces_all_together(board[Player::Black]);
+    bool const w = are_pieces_all_together(position.board()[Player::White]);
+    bool const b = are_pieces_all_together(position.board()[Player::Black]);
 
     if (w && !b)
         return GameOutcome::WhiteWins;
     if (b && !w)
         return GameOutcome::BlackWins;
-    if ((w && b) || count_moves(board, player_to_move) == 0)
+    if ((w && b) || count_moves(position) == 0)
         return GameOutcome::Draw;
     return GameOutcome::Ongoing;
 }
@@ -190,37 +190,41 @@ namespace
         {all_circles.data[BoardPosition{3, 3}.data()][1], 1.0},
     };
 
-    auto evaluate_leaf_position(Board const& board, Player player) -> double
+    auto evaluate_leaf_position(Position const& position) -> double
     {
-        bool const has_player_won = are_pieces_all_together(board[player]);
-        bool const has_player_lost = are_pieces_all_together(board[!player]);
-
-        if (has_player_lost || has_player_won)
-            return 1000.0 * (double(has_player_won) - double(has_player_lost));
+        auto const player_pieces = position.board()[position.player_to_move()];
+        auto const opponent_pieces = position.board()[!position.player_to_move()];
 
         auto res = double{};
 
+        bool const has_player_won = are_pieces_all_together(player_pieces);
+        bool const has_player_lost = are_pieces_all_together(opponent_pieces);
+
+        if (has_player_lost || has_player_won)
+            res += 1000.0 * static_cast<double>(has_player_won - has_player_lost);
+
         for (auto const& [positions, value] : important_positions)
         {
-            res += value * static_cast<double>(pop_count(positions & board[player]));
-            res -= value * static_cast<double>(pop_count(positions & board[!player]));
+            res += value * static_cast<double>(pop_count(positions & player_pieces));
+            res -= value * static_cast<double>(pop_count(positions & opponent_pieces));
         }
 
         return res;
     }
 
-    auto recommend_move_negamax(Board const& board, Player player, int depth) -> MoveRecommendation
+    auto recommend_move_negamax(Position const& position, int depth) -> MoveRecommendation
     {
-        if (depth == 0 || get_game_outcome(board, player) != GameOutcome::Ongoing)
-            return {{}, evaluate_leaf_position(board, player)};
+        if (depth == 0 || get_game_outcome(position) != GameOutcome::Ongoing)
+            return {{}, evaluate_leaf_position(position)};
 
         auto best_score = -big;
         auto best_move = Move{};
 
-        for (auto move : generate_moves(board, player))
+        for (auto move : generate_moves(position))
         {
-            auto const new_board = apply_move(move, board, player);
-            auto const score = -recommend_move_negamax(new_board, !player, depth - 1).score;
+            auto const new_position = apply_move(move, position);
+            auto const recommendation = recommend_move_negamax(new_position, depth - 1);
+            auto const score = -recommendation.score;
 
             if (score > best_score)
             {
@@ -232,21 +236,21 @@ namespace
         return {best_move, best_score};
     }
 
-    auto recommend_move_negamax_ab(
-        Board const& board, Player player, int depth, double alpha, double beta)
+    auto recommend_move_negamax_ab(Position const& position, int depth, double alpha, double beta)
         -> MoveRecommendation
     {
-        if (depth == 0 || get_game_outcome(board, player) != GameOutcome::Ongoing)
-            return {{}, evaluate_leaf_position(board, player)};
+        if (depth == 0 || get_game_outcome(position) != GameOutcome::Ongoing)
+            return {{}, evaluate_leaf_position(position)};
 
         auto best_score = -big;
         auto best_move = Move{};
 
-        for (auto move : generate_moves(board, player))
+        for (auto move : generate_moves(position))
         {
-            auto const new_board = apply_move(move, board, player);
-            auto const score =
-                -recommend_move_negamax_ab(new_board, !player, depth - 1, -beta, -alpha).score;
+            auto const new_position = apply_move(move, position);
+            auto const recommendation =
+                recommend_move_negamax_ab(new_position, depth - 1, -beta, -alpha);
+            auto const score = -recommendation.score;
 
             if (score > best_score)
             {
@@ -274,20 +278,19 @@ namespace
     }
 
     auto recommend_move_negamax_ab_killer(
-        Board const& board,
-        Player player,
+        Position const& position,
         int depth,
         double alpha,
         double beta,
         std::optional<Move> killer_move) -> MoveRecommendation
     {
-        if (depth == 0 || get_game_outcome(board, player) != GameOutcome::Ongoing)
-            return {{}, evaluate_leaf_position(board, player)};
+        if (depth == 0 || get_game_outcome(position) != GameOutcome::Ongoing)
+            return {{}, evaluate_leaf_position(position)};
 
         auto best_score = -big;
         auto best_move = Move{};
 
-        auto all_moves = generate_moves(board, player);
+        auto all_moves = generate_moves(position);
 
         if (killer_move)
         {
@@ -302,10 +305,9 @@ namespace
 
         for (auto move : all_moves)
         {
-            auto const new_board = apply_move(move, board, player);
+            auto const new_position = apply_move(move, position);
             auto const recommendation = recommend_move_negamax_ab_killer(
-                new_board, !player, depth - 1, -beta, -alpha, killer_move);
-
+                new_position, depth - 1, -beta, -alpha, killer_move);
             auto const score = -recommendation.score;
 
             if (score > best_score)
@@ -335,17 +337,17 @@ namespace
     }
 }  // namespace
 
-auto recommend_move(Board const& board, Player player) -> MoveRecommendation
+auto recommend_move(Position const& position) -> MoveRecommendation
 {
-    return recommend_move_negamax_ab_killer(board, player, 6, -big, big, {});
+    return recommend_move_negamax_ab_killer(position, 6, -big, big, {});
 }
 
-auto evaluate_position(Board const& board, Player player) -> double
+auto evaluate_position(Position const& position) -> double
 {
-    return recommend_move(board, player).score;
+    return recommend_move(position).score;
 }
 
-auto normalize_score(double score, Player player) -> double
+auto normalize_score(double const score, Player const player) -> double
 {
     return player == Player::Black ? -score : score;
 }

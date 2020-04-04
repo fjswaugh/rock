@@ -72,6 +72,24 @@ auto to_string(Player p) -> std::string
     return fmt::format("{}", p);
 }
 
+auto to_string(BoardPosition pos) -> std::string
+{
+    return fmt::format("{}", pos);
+}
+
+auto to_string(BitBoard board) -> std::string
+{
+    auto str = std::string{};
+    for (auto row = 8; row-- > 0;)
+    {
+        for (auto col = 0; col < 8; ++col)
+            str += board.at({col, row}) ? "x" : "-";
+        str += "\n";
+    }
+    str.pop_back();
+    return str;
+}
+
 namespace
 {
     auto format_pos(Board const& board, BoardPosition pos, BoardFormat const& bf) -> char
@@ -275,22 +293,10 @@ auto to_string(Board const& board, BoardFormat const& bf) -> std::string
     return str;
 }
 
-auto to_string(BitBoard board) -> std::string
+auto to_string(Position const& position, BoardFormat const& bf) -> std::string
 {
-    auto str = std::string{};
-    for (auto row = 8; row-- > 0;)
-    {
-        for (auto col = 0; col < 8; ++col)
-            str += board.at({col, row}) ? "x" : "-";
-        str += "\n";
-    }
-    str.pop_back();
-    return str;
-}
-
-auto to_string(BoardPosition pos) -> std::string
-{
-    return fmt::format("{}", pos);
+    return fmt::format(
+        "Player to move: {}\n{}", position.player_to_move(), to_string(position.board(), bf));
 }
 
 auto to_string(Move move) -> std::string
