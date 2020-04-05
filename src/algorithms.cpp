@@ -161,6 +161,9 @@ namespace
     auto generate_legal_destinations_impl(
         BoardPosition const from, BitBoard const friends, BitBoard const enemies) -> u64
     {
+        if (!friends.at(from))
+            return u64{};
+
         auto result = u64{};
         auto const all_pieces = friends | enemies;
 
