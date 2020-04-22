@@ -16,6 +16,9 @@ add_library(rock
     ../include/rock/starting_position.h
     ../include/rock/types.h)
 
+target_compile_options(rock PRIVATE ${WARNING_FLAGS})
+target_compile_options(rock PRIVATE "$<$<CONFIG:Release>:${MY_RELEASE_FLAGS}>")
+
 target_include_directories(rock PUBLIC ../include PRIVATE .)
 target_compile_features(rock PUBLIC cxx_std_17)
 target_link_libraries(rock PUBLIC fmt::fmt)

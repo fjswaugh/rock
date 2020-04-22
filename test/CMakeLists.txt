@@ -10,6 +10,8 @@ add_executable(rock_test
     test_move_gen_speed.cpp
     test_parse.cpp)
 
+target_compile_options(rock PRIVATE ${WARNING_FLAGS})
+
 target_compile_features(rock_test PRIVATE cxx_std_17)
 target_link_libraries(rock_test PRIVATE rock doctest::doctest)
 
