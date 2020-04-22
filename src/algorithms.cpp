@@ -97,7 +97,7 @@ namespace
      */
     struct InternalMoveList
     {
-        constexpr void push_back(InternalMove move_set)
+        void push_back(InternalMove move_set)
         {
             assert(pop_count(move_set.from_board) == 1);
             assert(size_ < max_size);
