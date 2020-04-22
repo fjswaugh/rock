@@ -33,13 +33,13 @@ namespace detail
 
     constexpr auto my_max(int x1, int x2) -> int { return x1 > x2 ? x1 : x2; }
 
-    constexpr auto make_circle(BoardPosition centre, int radius) -> BitBoard
+    constexpr auto make_circle(BoardCoordinates centre, int radius) -> BitBoard
     {
         auto board = BitBoard{};
 
         for (auto i = 0; i < 64; ++i)
         {
-            auto const pos = BoardPosition{i};
+            auto const pos = BoardCoordinates{i};
             if (my_max(my_abs(pos.x() - centre.x()), my_abs(pos.y() - centre.y())) <= radius)
                 board.set_bit(pos);
         }
@@ -47,7 +47,7 @@ namespace detail
         return board;
     }
 
-    constexpr auto make_horizontal(BoardPosition pos) -> BitBoard
+    constexpr auto make_horizontal(BoardCoordinates pos) -> BitBoard
     {
         auto res = BitBoard{};
         for (auto x = 0; x < 8; ++x)
@@ -55,7 +55,7 @@ namespace detail
         return res;
     }
 
-    constexpr auto make_vertical(BoardPosition pos) -> BitBoard
+    constexpr auto make_vertical(BoardCoordinates pos) -> BitBoard
     {
         auto res = BitBoard{};
         for (auto y = 0; y < 8; ++y)
@@ -63,7 +63,7 @@ namespace detail
         return res;
     }
 
-    constexpr auto make_positive_diagonal(BoardPosition pos) -> BitBoard
+    constexpr auto make_positive_diagonal(BoardCoordinates pos) -> BitBoard
     {
         auto res = BitBoard{};
         for (auto x = 0; x < 8; ++x)
@@ -72,7 +72,7 @@ namespace detail
         return res;
     }
 
-    constexpr auto make_negative_diagonal(BoardPosition pos) -> BitBoard
+    constexpr auto make_negative_diagonal(BoardCoordinates pos) -> BitBoard
     {
         auto res = BitBoard{};
         for (auto x = 0; x < 8; ++x)
@@ -88,7 +88,7 @@ constexpr auto make_all_directions() -> DirectionsContainer
 
     for (auto i = 0; i < 64; ++i)
     {
-        auto const pos = BoardPosition{i};
+        auto const pos = BoardCoordinates{i};
 
         directions.data[i][0] = detail::make_horizontal(pos);
         directions.data[i][1] = detail::make_vertical(pos);
@@ -105,7 +105,7 @@ constexpr auto make_all_circles() -> CirclesContainer
 
     for (auto pos = 0; pos < 64; ++pos)
         for (auto radius = 0; radius < 8; ++radius)
-            circles.data[pos][radius] = detail::make_circle(BoardPosition{pos}, radius);
+            circles.data[pos][radius] = detail::make_circle(BoardCoordinates{pos}, radius);
 
     return circles;
 }

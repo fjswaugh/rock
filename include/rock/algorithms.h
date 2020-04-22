@@ -12,7 +12,7 @@ auto apply_move(Move, Position) -> Position;
 auto list_moves(Position const&) -> std::vector<Move>;
 auto count_moves(Position const&, int level = 1) -> std::size_t;
 auto is_legal_move(Move, Position const&) -> bool;
-auto list_legal_destinations(BoardPosition from, Position const&) -> std::vector<BoardPosition>;
+auto list_legal_destinations(BoardCoordinates from, Position const&) -> std::vector<BoardCoordinates>;
 
 auto are_pieces_all_together(BitBoard) -> bool;
 auto get_game_outcome(Position const&) -> GameOutcome;

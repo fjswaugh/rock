@@ -72,7 +72,7 @@ auto to_string(Player p) -> std::string
     return fmt::format("{}", p);
 }
 
-auto to_string(BoardPosition pos) -> std::string
+auto to_string(BoardCoordinates pos) -> std::string
 {
     return fmt::format("{}", pos);
 }
@@ -92,7 +92,7 @@ auto to_string(BitBoard board) -> std::string
 
 namespace
 {
-    auto format_pos(Board const& board, BoardPosition pos, BoardFormat const& bf) -> char
+    auto format_pos(Board const& board, BoardCoordinates pos, BoardFormat const& bf) -> char
     {
         bool const p_w = board[Player::White].at(pos);
         bool const p_b = board[Player::Black].at(pos);

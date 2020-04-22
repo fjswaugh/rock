@@ -20,7 +20,7 @@ auto parse_player(std::string_view orig) -> std::optional<Player>
     return std::nullopt;
 }
 
-auto parse_board_position(std::string_view view) -> std::optional<BoardPosition>
+auto parse_board_position(std::string_view view) -> std::optional<BoardCoordinates>
 {
     auto str = std::string{view};
     auto const re = std::regex("([a-z]) *([0-9])", std::regex::icase);
@@ -39,7 +39,7 @@ auto parse_board_position(std::string_view view) -> std::optional<BoardPosition>
         char const x_char = x_str.front();
         char const y_char = y_str.front();
 
-        return BoardPosition{std::toupper(x_char) - 'A', y_char - '1'};
+        return BoardCoordinates{std::toupper(x_char) - 'A', y_char - '1'};
     }
 
     return std::nullopt;

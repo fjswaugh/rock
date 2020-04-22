@@ -32,7 +32,7 @@ struct BoardFormat
 };
 
 auto to_string(Player) -> std::string;
-auto to_string(BoardPosition) -> std::string;
+auto to_string(BoardCoordinates) -> std::string;
 auto to_string(BitBoard) -> std::string;
 auto to_string(Board const&, BoardFormat const& = {}) -> std::string;
 auto to_string(Position const&, BoardFormat const& = {}) -> std::string;
@@ -80,12 +80,12 @@ struct formatter<rock::GameOutcome> : formatter<std::string_view>
 };
 
 template <>
-struct formatter<rock::BoardPosition>
+struct formatter<rock::BoardCoordinates>
 {
     constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
 
     template <typename FormatContext>
-    auto format(rock::BoardPosition pos, FormatContext& ctx)
+    auto format(rock::BoardCoordinates pos, FormatContext& ctx)
     {
         auto const col = static_cast<char>(pos.x() + 'a');
         auto const row = static_cast<char>(pos.y() + '1');
@@ -137,8 +137,8 @@ struct formatter<rock::Move>
     template <typename FormatContext>
     auto format(rock::Move m, FormatContext& ctx)
     {
-        auto const from = rock::BoardPosition{m.from};
-        auto const to = rock::BoardPosition{m.to};
+        auto const from = rock::BoardCoordinates{m.from};
+        auto const to = rock::BoardCoordinates{m.to};
         return format_to(ctx.out(), "{}-{}", from, to);
     }
 };

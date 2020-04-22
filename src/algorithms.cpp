@@ -1,20 +1,14 @@
 #include "rock/algorithms.h"
+#include "bit_operations.h"
 #include "rock/parse.h"
 #include "table_generation.h"
 #include <algorithm>
-#include <climits>
 
 // TODO:
-// Consider a little more consistency in naming of internal functions
-// - Consider moving away from upfront generation of moves
-//   - Perhaps use code like in list_legal_destinations()
-//   - Should be faster than separating into individual move objects anyway
+// - Consider using strong types more, instead of lots of u64s
 //   - Reconsider integer type used to store board position if this is done
 //     - No longer needs to be compact (may perform better if not)
-// - Remove duplication in list_legal_destinations() and generate_moves()
-// - Separate bitwise stuff into separate header
-// - Remove separate search algorithms
-//   - Should probably work out some performance regression testing
+// - Should probably work out some performance regression testing
 // - Consider better algorithm for detemining if game is over
 //   - This check is probably done too many times in the search code
 // - Create some kind of stateful AI object to remember information
@@ -22,15 +16,25 @@
 namespace rock
 {
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Apply move
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 namespace
 {
+    auto
+    apply_move_low_level(BitBoard const from, BitBoard const to, BitBoard* mine, BitBoard* theirs)
+        -> void
+    {
+        mine->data ^= (from | to);
+        theirs->data &= ~to;
+    }
+
     auto apply_move_low_level(Move const m, BitBoard* mine, BitBoard* theirs) -> void
     {
         auto const from = m.from.bit_board();
         auto const to = m.to.bit_board();
-
-        mine->data ^= (from | to);
-        theirs->data &= ~to;
+        return apply_move_low_level(from, to, mine, theirs);
     }
 }  // namespace
 
@@ -47,29 +51,92 @@ auto apply_move(Move const m, Position p) -> Position
     return p;
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Internal structures for more efficiency
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 namespace
 {
-    struct MoveList
+    /**
+     * Internal move is a more flexible version of the normal move type. The move is represented in
+     * terms of bitboards, which allows multiple moves to be effectively stored in the same object,
+     * and also allows for an 'empty' move state.
+     */
+    struct InternalMove
     {
-        constexpr void push_back(Move move)
+        u64 from_board;
+        u64 to_board;
+
+        constexpr auto empty() const -> bool { return from_board == u64{} && to_board == u64{}; }
+
+        auto to_standard_move() const -> Move
         {
-            assert(size_ < max_size);
-            moves_[size_++] = move;
+            return Move{
+                BoardCoordinates{coordinates_from_bit_board(from_board)},
+                BoardCoordinates{coordinates_from_bit_board(to_board)},
+            };
         }
-        constexpr auto begin() const -> Move const* { return &moves_[0]; }
-        constexpr auto end() const -> Move const* { return this->begin() + size_; }
-        constexpr auto begin() -> Move* { return &moves_[0]; }
-        constexpr auto end() -> Move* { return this->begin() + size_; }
+    };
+
+    struct InternalMoveRecommendation
+    {
+        InternalMove move;
+        double score;
+
+        auto to_standard_move_recommendation() const -> MoveRecommendation
+        {
+            return {
+                move.to_standard_move(),
+                score,
+            };
+        }
+    };
+
+    /**
+     * The purpose of `InternalMoveList` is to provide an efficient way to store generated moves.
+     */
+    struct InternalMoveList
+    {
+        constexpr void push_back(InternalMove move_set)
+        {
+            assert(pop_count(move_set.from_board) == 1);
+            assert(size_ < max_size);
+            moves_[size_++] = move_set;
+        }
+        constexpr auto begin() const -> InternalMove const* { return &moves_[0]; }
+        constexpr auto end() const -> InternalMove const* { return this->begin() + size_; }
+        constexpr auto begin() -> InternalMove* { return &moves_[0]; }
+        constexpr auto end() -> InternalMove* { return this->begin() + size_; }
         constexpr auto size() const { return size_; }
 
     private:
-        constexpr static auto max_size = 12 * 8;
+        constexpr static auto max_size = 12;
 
-        Move moves_[max_size];
+        InternalMove moves_[max_size];
         std::size_t size_{};
     };
 
-    constexpr double big = 1000.0;
+    template <typename F>
+    auto for_each_move(InternalMoveList& moves, F&& f) -> void
+    {
+        for (auto move_set : moves)
+        {
+            while (move_set.to_board)
+            {
+                auto const to_board = extract_one_bit(move_set.to_board);
+                f(move_set.from_board, to_board);
+            }
+        }
+    }
+}  // namespace
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Function implementations
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+namespace
+{
+    constexpr double big = 10000.0;
 
     template <typename T, std::size_t N>
     using array_ref = T const (&)[N];
@@ -77,101 +144,18 @@ namespace
     constexpr auto all_circles = make_all_circles();
     constexpr auto all_directions = make_all_directions();
 
-    static_assert(CHAR_BIT == 8);
-
-    template <typename T>
-    [[maybe_unused]] constexpr auto num_bits = sizeof(T) * 8;
-
-    [[maybe_unused]] inline auto pop_count_manual(u64 x) -> u64
+    auto generate_legal_destinations(
+        u64 const from_coordinate, BitBoard const friends, BitBoard const enemies) -> u64
     {
-        // clang-format off
-        static constexpr int const s[] = {1, 2, 4, 8, 16, 32};
-        static constexpr u64 const b[] = {
-            0x5555555555555555,
-            0x3333333333333333,
-            0x0F0F0F0F0F0F0F0F,
-            0x00FF00FF00FF00FF,
-            0x0000FFFF0000FFFF,
-            0x00000000FFFFFFFF,
-        };
-
-        u64 c;
-        c = x - ((x >> u64{1}) & b[0]);
-        c = ((c >> s[1]) & b[1]) + (c & b[1]);
-        c = ((c >> s[2]) + c) & b[2];
-        c = ((c >> s[3]) + c) & b[3];
-        c = ((c >> s[4]) + c) & b[4];
-        c = ((c >> s[5]) + c) & b[5];
-        return c;
-        // clang-format on
-    }
-
-    [[maybe_unused]] inline auto position_from_bit_board_manual(u64 x) -> u64
-    {
-        // clang-format off
-        auto c = u64{64};
-        x &= static_cast<u64>(-static_cast<std::int64_t>(x));
-        if (x) c--;
-        if (x & u64{0x00000000FFFFFFFF}) c -= 32;
-        if (x & u64{0x0000FFFF0000FFFF}) c -= 16;
-        if (x & u64{0x00FF00FF00FF00FF}) c -=  8;
-        if (x & u64{0x0F0F0F0F0F0F0F0F}) c -=  4;
-        if (x & u64{0x3333333333333333}) c -=  2;
-        if (x & u64{0x5555555555555555}) c -=  1;
-        return c;
-        // clang-format on
-    }
-
-    inline auto pop_count(u64 x) -> u64
-    {
-#if defined(__GNUC__)
-        if constexpr (num_bits<unsigned long> == 64)
-        {
-            return static_cast<u64>(__builtin_popcountl(x));
-        }
-        else
-        {
-            static_assert(num_bits<unsigned long long> == 64);
-            return static_cast<u64>(__builtin_popcountll(x));
-        }
-#else
-        return pop_count_manual(x);
-#endif
-    }
-
-    inline auto position_from_bit_board(u64 x) -> u64
-    {
-#if defined(__GNUC__)
-        if constexpr (num_bits<unsigned long> == 64)
-        {
-            return static_cast<u64>(__builtin_ctzl(x));
-        }
-        else
-        {
-            static_assert(num_bits<unsigned long long> == 64);
-            return static_cast<u64>(__builtin_ctzll(x));
-        }
-#else
-        return position_from_bit_board_manual(x);
-#endif
-    }
-
-    inline auto bit_board_from_position(u64 pos) -> u64 { return u64{1} << pos; }
-
-    auto generate_legal_destinations_impl(
-        BoardPosition const from, BitBoard const friends, BitBoard const enemies) -> u64
-    {
-        if (!friends.at(from))
-            return u64{};
-
         auto result = u64{};
+
         auto const all_pieces = friends | enemies;
 
-        auto const positive = (~u64{}) << static_cast<u64>(from.data());
+        auto const positive = (~u64{}) << from_coordinate;
         auto const negative = ~positive;
 
-        array_ref<u64, 4> directions = all_directions.data[from.data()];
-        array_ref<u64, 8> circles = all_circles.data[from.data()];
+        array_ref<u64, 4> directions = all_directions.data[from_coordinate];
+        array_ref<u64, 8> circles = all_circles.data[from_coordinate];
 
         for (u64 const dir : directions)
         {
@@ -199,105 +183,85 @@ namespace
         return result;
     }
 
-    auto generate_legal_destinations(BoardPosition const from, Position const& position) -> u64
+    auto generate_legal_destinations(BoardCoordinates const from, Position const& position)
+        -> BitBoard
     {
         auto const friends = position.board()[position.player_to_move()];
         auto const enemies = position.board()[!position.player_to_move()];
-        return generate_legal_destinations_impl(from, friends, enemies);
+
+        return generate_legal_destinations(from.data(), friends, enemies);
     }
 
-    auto generate_moves_impl(BitBoard const friends, BitBoard const enemies) -> MoveList
+    auto generate_moves(BitBoard const friends, BitBoard const enemies) -> InternalMoveList
     {
-        auto const all_pieces = enemies | friends;
-
-        auto list = MoveList{};
-
+        auto list = InternalMoveList{};
         auto pieces_to_process = friends;
         while (pieces_to_process)
         {
-            auto const pos = position_from_bit_board(pieces_to_process);
-            pieces_to_process ^= bit_board_from_position(pos);
+            auto const from_pos = coordinates_from_bit_board(pieces_to_process);
+            auto const from_board = bit_board_from_coordinates(from_pos);
+            auto const destinations = generate_legal_destinations(from_pos, friends, enemies);
+            list.push_back({from_board, destinations});
 
-            auto const positive = (~u64{}) << u64(pos);
-            auto const negative = ~positive;
-
-            array_ref<u64, 4> directions = all_directions.data[pos];
-            array_ref<u64, 8> circles = all_circles.data[pos];
-
-            for (u64 const dir : directions)
-            {
-                auto const possible_distance = pop_count(dir & all_pieces);
-
-                u64 const circle = circles[possible_distance - 1];
-                u64 const circle_edge = circles[std::min(u64{7}, possible_distance)] ^ circle;
-
-                auto const d_p = dir & positive;
-                auto const d_n = dir & negative;
-                auto const ce_d_p = circle_edge & d_p;
-                auto const ce_d_n = circle_edge & d_n;
-                auto const c_d_p = circle & d_p;
-                auto const c_d_n = circle & d_n;
-
-                assert(pop_count(circle_edge & dir & positive) <= 1);
-
-                if (ce_d_p && (enemies & c_d_p) == u64{} && (friends & ce_d_p) == u64{})
-                {
-                    auto const to = position_from_bit_board(ce_d_p);
-                    list.push_back({BoardPosition{pos}, BoardPosition{to}});
-                }
-
-                if (ce_d_n && (enemies & c_d_n) == u64{} && (friends & ce_d_n) == u64{})
-                {
-                    auto const to = position_from_bit_board(ce_d_n);
-                    list.push_back({BoardPosition{pos}, BoardPosition{to}});
-                }
-            }
+            pieces_to_process ^= from_board;
         }
-
         return list;
     }
 
-    auto count_moves_impl(BitBoard const friends, BitBoard const enemies, int level) -> std::size_t
+    auto count_moves(BitBoard const friends, BitBoard const enemies, int level) -> std::size_t
     {
         if (level <= 0)
             return 1;
 
-        auto moves = generate_moves_impl(friends, enemies);
-
-        if (level == 1)
-            return moves.size();
-
+        auto moves = generate_moves(friends, enemies);
         auto num_moves = std::size_t{};
 
-        for (auto const move : moves)
+        if (level == 1)
         {
-            auto enemies_copy = enemies;
-            auto friends_copy = friends;
-            apply_move_low_level(move, &friends_copy, &enemies_copy);
+            for (auto const& move_set : moves)
+                num_moves += pop_count(move_set.to_board);
+        }
+        else
+        {
+            auto const add_to_count = [&](u64 from_board, u64 to_board) {
+                auto enemies_copy = enemies;
+                auto friends_copy = friends;
+                apply_move_low_level(from_board, to_board, &friends_copy, &enemies_copy);
 
-            num_moves += count_moves_impl(enemies_copy, friends_copy, level - 1);
+                num_moves += count_moves(enemies_copy, friends_copy, level - 1);
+            };
+            for_each_move(moves, add_to_count);
         }
 
         return num_moves;
     }
-
-    auto generate_moves(Position const& position) -> MoveList
-    {
-        auto const friends = position.board()[position.player_to_move()];
-        auto const enemies = position.board()[!position.player_to_move()];
-        return generate_moves_impl(friends, enemies);
-    }
 }  // namespace
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Main functions
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 auto list_moves(Position const& position) -> std::vector<Move>
 {
-    auto const moves = generate_moves(position);
-    return std::vector(moves.begin(), moves.end());
+    auto result = std::vector<Move>{};
+
+    auto const friends = position.board()[position.player_to_move()];
+    auto const enemies = position.board()[!position.player_to_move()];
+    auto moves = generate_moves(friends, enemies);
+
+    for_each_move(moves, [&](u64 from_board, u64 to_board) {
+        result.push_back({
+            BoardCoordinates{coordinates_from_bit_board(from_board)},
+            BoardCoordinates{coordinates_from_bit_board(to_board)},
+        });
+    });
+
+    return result;
 }
 
 auto count_moves(Position const& position, int level) -> std::size_t
 {
-    return count_moves_impl(
+    return count_moves(
         position.board()[position.player_to_move()],
         position.board()[!position.player_to_move()],
         level);
@@ -305,23 +269,24 @@ auto count_moves(Position const& position, int level) -> std::size_t
 
 auto is_legal_move(Move move, Position const& position) -> bool
 {
-    auto const all_moves = generate_moves(position);
+    auto const all_moves = list_moves(position);
     return std::find(all_moves.begin(), all_moves.end(), move) != all_moves.end();
 }
 
-auto list_legal_destinations(BoardPosition from, Position const& position)
-    -> std::vector<BoardPosition>
+auto list_legal_destinations(BoardCoordinates from, Position const& position)
+    -> std::vector<BoardCoordinates>
 {
     auto destinations = generate_legal_destinations(from, position);
 
-    auto res = std::vector<BoardPosition>{};
+    auto res = std::vector<BoardCoordinates>{};
     res.reserve(8);
 
     while (destinations)
     {
-        auto const board_pos = position_from_bit_board(destinations);
-        res.emplace_back(board_pos);
-        destinations ^= bit_board_from_position(board_pos);
+        auto const pos = coordinates_from_bit_board(destinations);
+        destinations ^= bit_board_from_coordinates(pos);
+
+        res.emplace_back(pos);
     }
 
     return res;
@@ -335,8 +300,8 @@ namespace
 
         while (pieces)
         {
-            auto const pos = position_from_bit_board(pieces);
-            auto const pos_board = bit_board_from_position(pos);
+            auto const pos = coordinates_from_bit_board(pieces);
+            auto const pos_board = bit_board_from_coordinates(pos);
 
             auto const circle = all_circles.data[pos][1];
             auto const edge = circle ^ pos_board;
@@ -357,8 +322,8 @@ namespace
 
 auto are_pieces_all_together(BitBoard const board) -> bool
 {
-    auto const pos = position_from_bit_board(board);
-    auto const pos_board = bit_board_from_position(pos);
+    auto const pos = coordinates_from_bit_board(board);
+    auto const pos_board = bit_board_from_coordinates(pos);
 
     auto const blob = find_all_neighbours_of(pos_board, board);
 
@@ -379,12 +344,16 @@ auto get_game_outcome(Position const& position) -> GameOutcome
     return GameOutcome::Ongoing;
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Move recommendation algorithms (alpha-beta search etc.)
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 namespace
 {
     constexpr std::pair<BitBoard, double> important_positions[] = {
-        {all_circles.data[BoardPosition{3, 3}.data()][3], 1.0},
-        {all_circles.data[BoardPosition{3, 3}.data()][2], 1.0},
-        {all_circles.data[BoardPosition{3, 3}.data()][1], 1.0},
+        {all_circles.data[BoardCoordinates{3, 3}.data()][3], 1.0},
+        {all_circles.data[BoardCoordinates{3, 3}.data()][2], 1.0},
+        {all_circles.data[BoardCoordinates{3, 3}.data()][1], 1.0},
     };
 
     auto evaluate_leaf_position(BitBoard friends, BitBoard enemies) -> double
@@ -408,158 +377,137 @@ namespace
 
     auto is_game_finished(BitBoard friends, BitBoard enemies) -> bool
     {
-        return count_moves_impl(friends, enemies, 1) == 0 || are_pieces_all_together(friends) ||
+        return count_moves(friends, enemies, 1) == 0 || are_pieces_all_together(friends) ||
             are_pieces_all_together(enemies);
     }
 
+    /**
+     * Simple negamax algorithm presented here for clarity
+     */
     [[maybe_unused]] auto
     recommend_move_negamax(BitBoard const friends, BitBoard const enemies, int const depth)
-        -> MoveRecommendation
+        -> InternalMoveRecommendation
     {
         if (depth == 0 || is_game_finished(friends, enemies))
             return {{}, evaluate_leaf_position(friends, enemies)};
 
-        auto best_score = -big;
-        auto best_move = Move{};
+        auto result = InternalMoveRecommendation{{}, -big};
 
-        for (auto move : generate_moves_impl(friends, enemies))
+        auto moves = generate_moves(friends, enemies);
+        for (auto move_set : moves)
         {
-            auto friends_copy = friends;
-            auto enemies_copy = enemies;
-            apply_move_low_level(move, &friends_copy, &enemies_copy);
-
-            auto const recommendation =
-                recommend_move_negamax(enemies_copy, friends_copy, depth - 1);
-            auto const score = -recommendation.score;
-
-            if (score > best_score)
+            while (move_set.to_board)
             {
-                best_score = score;
-                best_move = move;
+                auto const to_board = extract_one_bit(move_set.to_board);
+
+                auto friends_copy = friends;
+                auto enemies_copy = enemies;
+                apply_move_low_level(move_set.from_board, to_board, &friends_copy, &enemies_copy);
+
+                auto const recommendation =
+                    recommend_move_negamax(enemies_copy, friends_copy, depth - 1);
+                auto const score = -recommendation.score;
+
+                if (score > result.score)
+                {
+                    result.move = {move_set.from_board, to_board};
+                    result.score = score;
+                }
             }
         }
 
-        return {best_move, best_score};
+        return result;
     }
 
-    [[maybe_unused]] auto recommend_move_negamax_ab(
-        BitBoard const friends, BitBoard const enemies, int depth, double alpha, double beta)
-        -> MoveRecommendation
-    {
-        if (depth == 0 || is_game_finished(friends, enemies))
-            return {{}, evaluate_leaf_position(friends, enemies)};
-
-        auto best_score = -big;
-        auto best_move = Move{};
-
-        for (auto move : generate_moves_impl(friends, enemies))
-        {
-            auto friends_copy = friends;
-            auto enemies_copy = enemies;
-            apply_move_low_level(move, &friends_copy, &enemies_copy);
-
-            auto const recommendation =
-                recommend_move_negamax_ab(enemies_copy, friends_copy, depth - 1, -beta, -alpha);
-            auto const score = -recommendation.score;
-
-            if (score > best_score)
-            {
-                best_score = score;
-                best_move = move;
-            }
-
-            if (best_score > alpha)
-            {
-                // Until this happens, we are an 'All-Node'
-                // Now we may be a 'PV-Node', or...
-                alpha = best_score;
-            }
-
-            if (alpha >= beta)
-            {
-                // ...if this happens, we are a 'Cut-Node'
-                break;
-            }
-        }
-
-        // Note, we may return values outside of the range [alpha, beta]. This
-        // makes us a 'fail-soft' version of alpha-beta pruning
-        return {best_move, best_score};
-    }
-
+    /**
+     * Negamax algorithm with alpha-beta pruning and the killer heuristic.
+     * The `killer_move` parameter may be empty.
+     */
     auto recommend_move_negamax_ab_killer(
         BitBoard const friends,
         BitBoard const enemies,
         int depth,
         double alpha,
         double beta,
-        std::optional<Move> killer_move) -> MoveRecommendation
+        InternalMove killer_move) -> InternalMoveRecommendation
     {
         if (depth == 0 || is_game_finished(friends, enemies))
             return {{}, evaluate_leaf_position(friends, enemies)};
 
-        auto best_score = -big;
-        auto best_move = Move{};
+        auto result = InternalMoveRecommendation{{}, -big};
 
-        auto all_moves = generate_moves_impl(friends, enemies);
+        auto moves = generate_moves(friends, enemies);
 
-        if (killer_move)
+        if (!killer_move.empty())
         {
-            if (auto it = std::find(all_moves.begin(), all_moves.end(), *killer_move);
-                it != all_moves.end())
-            {
-                std::swap(*all_moves.begin(), *it);
-            }
+            auto const move_matches_killer = [&killer_move](InternalMove const& move) {
+                return (move.from_board & killer_move.from_board) &&
+                    (move.to_board & killer_move.to_board);
+            };
 
-            killer_move = std::nullopt;
+            if (auto it = std::find_if(moves.begin(), moves.end(), move_matches_killer);
+                it != moves.end())
+            {
+                std::swap(*moves.begin(), *it);
+            }
+            killer_move = {};
         }
 
-        for (auto move : all_moves)
+        for (auto move_set : moves)
         {
-            auto friends_copy = friends;
-            auto enemies_copy = enemies;
-            apply_move_low_level(move, &friends_copy, &enemies_copy);
-
-            auto const recommendation = recommend_move_negamax_ab_killer(
-                enemies_copy, friends_copy, depth - 1, -beta, -alpha, killer_move);
-            auto const score = -recommendation.score;
-
-            if (score > best_score)
+            while (move_set.to_board)
             {
-                best_score = score;
-                best_move = move;
-                killer_move = recommendation.move;
-            }
+                auto const to_board = extract_one_bit(move_set.to_board);
 
-            if (best_score > alpha)
-            {
-                // Until this happens, we are an 'All-Node'
-                // Now we may be a 'PV-Node', or...
-                alpha = best_score;
-            }
+                auto friends_copy = friends;
+                auto enemies_copy = enemies;
+                apply_move_low_level(move_set.from_board, to_board, &friends_copy, &enemies_copy);
 
-            if (alpha >= beta)
-            {
-                // ...if this happens, we are a 'Cut-Node'
-                break;
+                auto const recommendation = recommend_move_negamax_ab_killer(
+                    enemies_copy, friends_copy, depth - 1, -beta, -alpha, killer_move);
+                auto const score = -recommendation.score;
+
+                if (score > result.score)
+                {
+                    result.move = {move_set.from_board, to_board};
+                    result.score = score;
+                    killer_move = recommendation.move;
+                }
+
+                if (result.score > alpha)
+                {
+                    // Until this happens, we are an 'All-Node'
+                    // Now we may be a 'PV-Node', or...
+                    alpha = result.score;
+                }
+
+                if (alpha >= beta)
+                {
+                    // ...if this happens, we are a 'Cut-Node'
+                    goto end;
+                }
             }
         }
+
+    end:
 
         // Note, we may return values outside of the range [alpha, beta]. This
         // makes us a 'fail-soft' version of alpha-beta pruning
-        return {best_move, best_score};
+        return result;
     }
 }  // namespace
 
 auto recommend_move(Position const& position) -> MoveRecommendation
 {
-    return recommend_move_negamax_ab_killer(
+    InternalMoveRecommendation const internal = recommend_move_negamax_ab_killer(
         position.board()[position.player_to_move()],
         position.board()[!position.player_to_move()],
         6,
         -big,
         big,
         {});
+
+    return internal.to_standard_move_recommendation();
 }
 
 auto evaluate_position(Position const& position) -> double

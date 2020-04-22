@@ -32,48 +32,52 @@ constexpr auto operator!(Player p) -> Player
 
 struct BitBoard;
 
-struct BoardPosition
+struct BoardCoordinates
 {
-    constexpr BoardPosition() = default;
+    using underlying_type = u8;
+
+    constexpr BoardCoordinates() = default;
+
     template <typename T>
-    explicit constexpr BoardPosition(T data) : data_{static_cast<u8>(data)}
+    explicit constexpr BoardCoordinates(T data) : data_{static_cast<underlying_type>(data)}
     {
 #ifndef NDEBUG
-        if (data >= static_cast<T>(64))
-            throw "Out of bounds in BoardPosition";
+        if (data_ >= underlying_type{64})
+            throw "Out of bounds in BoardCoordinates";
 #endif
     }
+
     template <typename T>
-    constexpr BoardPosition(T x, T y) : BoardPosition{static_cast<u8>(y * 8 + x)}
+    constexpr BoardCoordinates(T x, T y) : BoardCoordinates{static_cast<underlying_type>(y * 8 + x)}
     {}
 
-    constexpr auto data() const -> u8 { return data_; }
-    explicit constexpr operator u8() const { return data_; }
+    constexpr auto data() const -> underlying_type { return data_; }
+    explicit constexpr operator underlying_type() const { return data_; }
 
-    constexpr auto x() const -> int { return data_ % 8; }
-    constexpr auto y() const -> int { return data_ / 8; }
+    constexpr auto x() const -> int { return static_cast<int>(data_) % 8; }
+    constexpr auto y() const -> int { return static_cast<int>(data_) / 8; }
 
     constexpr auto bit_board() const -> BitBoard;
 
-    friend constexpr auto operator<(BoardPosition p1, BoardPosition p2) -> bool
+    friend constexpr auto operator<(BoardCoordinates p1, BoardCoordinates p2) -> bool
     {
         return p1.data_ < p2.data_;
     }
-    friend constexpr auto operator<=(BoardPosition p1, BoardPosition p2) -> bool
+    friend constexpr auto operator<=(BoardCoordinates p1, BoardCoordinates p2) -> bool
     {
         return p1.data_ <= p2.data_;
     }
-    friend constexpr auto operator==(BoardPosition p1, BoardPosition p2) -> bool
+    friend constexpr auto operator==(BoardCoordinates p1, BoardCoordinates p2) -> bool
     {
         return p1.data_ == p2.data_;
     }
-    friend constexpr auto operator!=(BoardPosition p1, BoardPosition p2) -> bool
+    friend constexpr auto operator!=(BoardCoordinates p1, BoardCoordinates p2) -> bool
     {
         return p1.data_ != p2.data_;
     }
 
 private:
-    u8 data_{};
+    underlying_type data_{};
 };
 
 struct BitBoard
@@ -83,16 +87,20 @@ struct BitBoard
     constexpr operator u64() const { return data; }
     constexpr operator u64&() { return data; }
 
-    constexpr auto at(BoardPosition pos) const -> bool { return data & pos.bit_board(); }
+    constexpr auto at(BoardCoordinates c) const -> bool { return data & c.bit_board(); }
 
-    constexpr auto set_bit(BoardPosition pos) -> void { data |= pos.bit_board(); }
-    constexpr auto flip_bit(BoardPosition pos) -> void { data ^= pos.bit_board(); }
-    constexpr auto clear_bit(BoardPosition pos) -> void { data &= ~pos.bit_board(); }
+    constexpr auto set_bit(BoardCoordinates c) -> void { data |= c.bit_board(); }
+    constexpr auto flip_bit(BoardCoordinates c) -> void { data ^= c.bit_board(); }
+    constexpr auto clear_bit(BoardCoordinates c) -> void { data &= ~c.bit_board(); }
+
+    auto extract_one() -> BitBoard;
+    auto count() const -> std::size_t;
+    auto coordinates() const -> BoardCoordinates;
 
     u64 data{};
 };
 
-constexpr auto BoardPosition::bit_board() const -> BitBoard
+constexpr auto BoardCoordinates::bit_board() const -> BitBoard
 {
     return BitBoard{u64{1} << u64{data_}};
 }
@@ -140,8 +148,8 @@ private:
 
 struct Move
 {
-    BoardPosition from;
-    BoardPosition to;
+    BoardCoordinates from;
+    BoardCoordinates to;
 
     constexpr auto friend operator==(Move m1, Move m2) -> bool
     {

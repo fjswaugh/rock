@@ -3,8 +3,10 @@ add_library(rock
     parse.cpp
     format.cpp
     table_generation.h
+    bit_operations.h
     game.cpp
     fen.cpp
+    types.cpp
     ../include/rock/fen.h
     ../include/rock/game.h
     ../include/rock/algorithms.h
