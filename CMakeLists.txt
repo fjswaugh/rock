@@ -13,26 +13,33 @@ if (CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     set(CMAKE_EXPORT_COMPILE_COMMANDS "ON")
 endif ()
 
-option(ROCK_TEST "Generate tests" ${MASTER_PROJECT})
-option(ROCK_RECOMMENDED_OPT "Use recommended optimization flags" ON)
+option(ROCK_TEST                    "Generate tests"                                ${MASTER_PROJECT})
+option(ROCK_RECOMMENDED_RELEASE_OPT "Use recommended optimization flags in Release" ON)
+option(ROCK_ARCHITECTURE_OPT        "Use architecture-specific optimizations"       OFF)
 
 ####################################################################################################
 # Compiler flags to be appended to target
 ####################################################################################################
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    set(WARNING_FLAGS /W4)
+    string(REGEX REPLACE "/W[0-9]" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    set(ROCK_COMMON_FLAGS /W4)
 else ()
-    set(WARNING_FLAGS -Wall -Wextra)
+    set(ROCK_COMMON_FLAGS -Wall -Wextra -Wpedantic)
     if (ROCK_RECOMMENDED_OPT)
-        set(MY_RELEASE_FLAGS -O3 -march=native)
+        string(REGEX REPLACE "-O[0-9]" "" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+        set(ROCK_RELEASE_FLAGS -O3)
+    endif ()
+    if (ROCK_ARCHITECTURE_OPT)
+        set(ROCK_RELEASE_FLAGS ${ROCK_RELEASE_FLAGS} -march=native)
     endif ()
 endif ()
 
-# Add no-semantic-interposition to gcc otherwise rock will be very slow when built with PIC
+# Add no-semantic-interposition to gcc otherwise rock will be very slow when
+# built as a shared library
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     if (ROCK_RECOMMENDED_OPT)
-        set(MY_RELEASE_FLAGS ${MY_RELEASE_FLAGS} -fno-semantic-interposition)
+        set(ROCK_RELEASE_FLAGS ${ROCK_RELEASE_FLAGS} -fno-semantic-interposition)
     endif()
 endif()
 
@@ -47,6 +54,12 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/fmtlib/fmt.git
     GIT_TAG        5.3.0)
 FetchContent_MakeAvailable(fmtlib)
+
+FetchContent_Declare(
+    doctest
+    GIT_REPOSITORY https://github.com/onqtam/doctest.git
+    GIT_TAG        2.3.7)
+FetchContent_MakeAvailable(doctest)
 
 ####################################################################################################
 # Subdirectories
