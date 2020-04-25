@@ -12,7 +12,8 @@ auto apply_move(Move, Position) -> Position;
 auto list_moves(Position const&) -> std::vector<Move>;
 auto count_moves(Position const&, int level = 1) -> std::size_t;
 auto is_legal_move(Move, Position const&) -> bool;
-auto list_legal_destinations(BoardCoordinates from, Position const&) -> std::vector<BoardCoordinates>;
+auto list_legal_destinations(BoardCoordinates from, Position const&)
+    -> std::vector<BoardCoordinates>;
 
 auto are_pieces_all_together(BitBoard) -> bool;
 auto get_game_outcome(Position const&) -> GameOutcome;
@@ -24,7 +25,7 @@ struct MoveRecommendation
 };
 
 /**
- * Player to move, positive result is good for player
+ * Positive result is good for the player making the move
  */
 auto recommend_move(Position const&) -> MoveRecommendation;
 auto evaluate_position(Position const&) -> double;

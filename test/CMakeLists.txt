@@ -1,5 +1,6 @@
 add_executable(rock_test
     main.cpp
+    doctest_formatting.h
     test_move_recommend_speed.cpp
     test_move_gen_speed.cpp
     test_parse.cpp)

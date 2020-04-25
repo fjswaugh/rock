@@ -147,6 +147,8 @@ namespace
     auto generate_legal_destinations(
         u64 const from_coordinate, BitBoard const friends, BitBoard const enemies) -> u64
     {
+        assert(bit_board_from_coordinates(from_coordinate) & friends);
+
         auto result = u64{};
 
         auto const all_pieces = friends | enemies;
@@ -276,10 +278,13 @@ auto is_legal_move(Move move, Position const& position) -> bool
 auto list_legal_destinations(BoardCoordinates from, Position const& position)
     -> std::vector<BoardCoordinates>
 {
-    auto destinations = generate_legal_destinations(from, position);
-
     auto res = std::vector<BoardCoordinates>{};
     res.reserve(8);
+
+    if (!(from.bit_board() & position.board()[position.player_to_move()]))
+        return res;
+
+    auto destinations = generate_legal_destinations(from, position);
 
     while (destinations)
     {
