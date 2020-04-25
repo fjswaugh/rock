@@ -3,7 +3,7 @@
 
 TEST_CASE("rock::parse_board_position")
 {
-    CHECK(rock::parse_board_position("A1") == rock::BoardCoordinates{0, 0});
+    CHECK(rock::parse_board_coordinates("A1") == rock::BoardCoordinates{0, 0});
 }
 
 TEST_CASE("rock::parse_move")

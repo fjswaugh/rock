@@ -20,7 +20,7 @@ auto parse_player(std::string_view orig) -> std::optional<Player>
     return std::nullopt;
 }
 
-auto parse_board_position(std::string_view view) -> std::optional<BoardCoordinates>
+auto parse_board_coordinates(std::string_view view) -> std::optional<BoardCoordinates>
 {
     auto str = std::string{view};
     auto const re = std::regex("([a-z]) *([0-9])", std::regex::icase);
@@ -60,8 +60,8 @@ auto parse_move(std::string_view view) -> std::optional<Move>
         auto const from_str = matches[1].str();
         auto const to_str = matches[2].str();
 
-        auto const from = parse_board_position(from_str);
-        auto const to = parse_board_position(to_str);
+        auto const from = parse_board_coordinates(from_str);
+        auto const to = parse_board_coordinates(to_str);
 
         if (from && to)
             return Move{*from, *to};

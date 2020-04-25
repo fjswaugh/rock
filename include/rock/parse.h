@@ -21,7 +21,7 @@ constexpr auto parse_literal_bit_board(std::string_view) -> BitBoard;
  * can be parsed or not. Not very composable.
  */
 auto parse_player(std::string_view) -> std::optional<Player>;
-auto parse_board_position(std::string_view) -> std::optional<BoardCoordinates>;
+auto parse_board_coordinates(std::string_view) -> std::optional<BoardCoordinates>;
 auto parse_move(std::string_view) -> std::optional<Move>;
 
 namespace literals
