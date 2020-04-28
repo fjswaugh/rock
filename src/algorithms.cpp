@@ -490,19 +490,13 @@ namespace
         if (depth == 0)
             return {{}, evaluate_leaf_position(friends, enemies)};
 
-        auto moves = generate_moves(friends, enemies);
         auto result = InternalMoveRecommendation{{}, -big};
         auto type = NodeType{};
-
-        // if game is over, return early
-        bool const has_player_won = are_pieces_all_together(friends);
-        bool const has_player_lost = are_pieces_all_together(enemies);
-        if (moves.size() == 0 || has_player_won || has_player_lost)
-        {
-            return {{}, evaluate_leaf_position(friends, enemies, has_player_won, has_player_lost)};
-        }
+        auto moves = InternalMoveList{};
 
 #ifdef USE_TT
+        // Check the transposition table before checking if the game is over
+        // (this works out faster)
         auto const [tt_ptr, was_empty] = table.try_emplace(friends, enemies);
         if (!was_empty)
         {
@@ -570,6 +564,21 @@ namespace
             }
         }
 #endif
+
+        moves = generate_moves(friends, enemies);
+
+        // if game is over, return early
+        {
+            bool const has_player_won = are_pieces_all_together(friends);
+            bool const has_player_lost = are_pieces_all_together(enemies);
+            if (moves.size() == 0 || has_player_won || has_player_lost)
+            {
+                return {
+                    {},
+                    evaluate_leaf_position(friends, enemies, has_player_won, has_player_lost),
+                };
+            }
+        }
 
 #ifdef USE_KH
         if (!killer_move.empty())
