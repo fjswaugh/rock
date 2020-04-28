@@ -4,6 +4,32 @@
 #include "table_generation.h"
 #include <algorithm>
 
+#define USE_TT
+#define USE_ID
+#define USE_KH
+
+#define TT_MAP_TYPE_STD 0
+#define TT_MAP_TYPE_ABSL 1
+#define TT_MAP_TYPE TT_MAP_TYPE_ABSL
+
+#define DEPTH 6
+
+#ifdef USE_TT
+
+#include "rock/format.h"
+#include <absl/hash/hash.h>
+#include <fmt/format.h>
+#include <iostream>
+
+#if TT_MAP_TYPE == TT_MAP_TYPE_ABSL
+#include <absl/container/flat_hash_map.h>
+#include <memory>
+#else
+#include <unordered_map>
+#endif
+
+#endif
+
 // TODO:
 // - Consider using strong types more, instead of lots of u64s
 //   - Reconsider integer type used to store board position if this is done
@@ -12,6 +38,8 @@
 // - Consider better algorithm for detemining if game is over
 //   - This check is probably done too many times in the search code
 // - Create some kind of stateful AI object to remember information
+// - Create some kind of analysis of what is going on in the search tree
+// - Create interface to take advantage of iterative deepening
 
 namespace rock
 {
@@ -424,6 +452,62 @@ namespace
         return result;
     }
 
+    enum struct NodeType
+    {
+        All,
+        Pv,
+        Cut,
+    };
+
+#ifdef USE_TT
+    struct TranspositionTable
+    {
+    public:
+        using Key = std::tuple<u64, u64>;
+        struct Value
+        {
+            InternalMoveRecommendation recommendation;
+            int depth;
+            NodeType type;
+        };
+
+        TranspositionTable() = default;
+
+        auto try_emplace(u64 friends, u64 enemies) -> std::pair<Value*, bool>
+        {
+#if TT_MAP_TYPE == TT_MAP_TYPE_ABSL
+            auto const [it, did_insert] = data_.try_emplace(std::tuple{friends, enemies}, std::make_unique<Value>());
+            return {it->second.get(), did_insert};
+#else
+            auto const [it, did_insert] = data_.try_emplace(std::tuple{friends, enemies}, Value{});
+            return {&it->second, did_insert};
+#endif
+        }
+
+        auto find(u64 friends, u64 enemies) const -> Value const*
+        {
+            auto it = data_.find(std::tuple{friends, enemies});
+#if TT_MAP_TYPE == TT_MAP_TYPE_ABSL
+            return it == data_.end() ? nullptr : it->second.get();
+#else
+            return it == data_.end() ? nullptr : &it->second;
+#endif
+        }
+
+        auto size() const -> std::size_t { return data_.size(); }
+
+    private:
+#if TT_MAP_TYPE == TT_MAP_TYPE_ABSL
+        absl::flat_hash_map<Key, std::unique_ptr<Value>> data_;
+#else
+        std::unordered_map<Key, Value, absl::Hash<Key>> data_;
+#endif
+    };
+
+    TranspositionTable table{};
+    int pv_count{};
+#endif
+
     /**
      * Negamax algorithm with alpha-beta pruning and the killer heuristic.
      * The `killer_move` parameter may be empty.
@@ -433,16 +517,92 @@ namespace
         BitBoard const enemies,
         int depth,
         double alpha,
-        double beta,
-        InternalMove killer_move) -> InternalMoveRecommendation
+        double beta
+#ifdef USE_KH
+        ,
+        InternalMove killer_move
+#endif
+        ) -> InternalMoveRecommendation
     {
         if (depth == 0 || is_game_finished(friends, enemies))
             return {{}, evaluate_leaf_position(friends, enemies)};
 
+        auto moves = InternalMoveList{};
         auto result = InternalMoveRecommendation{{}, -big};
+        auto type = NodeType{};
 
-        auto moves = generate_moves(friends, enemies);
+#ifdef USE_TT
+        auto const [tt_ptr, was_empty] = table.try_emplace(friends, enemies);
+        if (!was_empty)
+        {
+            // Note: don't just return a previous result, even one from a higher
+            // depth!
+            //
+            // The beta cutoff might have been lower for this version of the
+            // result, which means the score might not be enough to trigger a
+            // parent's beta cutoff where it may be if we let the search
+            // continue.
+            //
+            // I'm not sure about this analysis, but certainly I saw
+            // performance degradation if I just returned from here when I
+            // found a match from a higher depth search.
 
+            // Theoretically we could do this, but it doesn't seem to improve
+            // times at all. However, adding this may produce better results in
+            // some cases if the recommendations are better (as a result of
+            // being from higher depth).
+            //
+            // if (tt_ptr->type == NodeType::Pv && tt_ptr->depth >= depth)
+            //    return tt_ptr->recommendation;
+
+            auto const& move = tt_ptr->recommendation.move;
+
+            auto friends_copy = friends;
+            auto enemies_copy = enemies;
+            apply_move_low_level(move.from_board, move.to_board, &friends_copy, &enemies_copy);
+
+            auto const recommendation = recommend_move_negamax_ab_killer(
+                enemies_copy,
+                friends_copy,
+                depth - 1,
+                -beta,
+                -alpha
+#ifdef USE_KH
+                ,
+                {}
+#endif
+            );
+            auto const score = -recommendation.score;
+
+            if (score > result.score)
+            {
+                result.move = move;
+                result.score = score;
+#ifdef USE_KH
+                killer_move = recommendation.move;
+#endif
+            }
+
+            if (result.score > alpha)
+            {
+                // Until this happens, we are an 'All-Node'
+                // Now we may be a 'PV-Node', or...
+                alpha = result.score;
+                type = NodeType::Pv;
+            }
+
+            if (alpha >= beta)
+            {
+                // ...if this happens, we are a 'Cut-Node'
+                type = NodeType::Cut;
+                goto end;
+            }
+        }
+#endif
+
+        moves = generate_moves(friends, enemies);
+
+#ifdef USE_KH
         if (!killer_move.empty())
         {
             auto const move_matches_killer = [&killer_move](InternalMove const& move) {
@@ -457,6 +617,7 @@ namespace
             }
             killer_move = {};
         }
+#endif
 
         for (auto move_set : moves)
         {
@@ -469,14 +630,25 @@ namespace
                 apply_move_low_level(move_set.from_board, to_board, &friends_copy, &enemies_copy);
 
                 auto const recommendation = recommend_move_negamax_ab_killer(
-                    enemies_copy, friends_copy, depth - 1, -beta, -alpha, killer_move);
+                    enemies_copy,
+                    friends_copy,
+                    depth - 1,
+                    -beta,
+                    -alpha
+#ifdef USE_KH
+                    ,
+                    killer_move
+#endif
+                );
                 auto const score = -recommendation.score;
 
                 if (score > result.score)
                 {
                     result.move = {move_set.from_board, to_board};
                     result.score = score;
+#ifdef USE_KH
                     killer_move = recommendation.move;
+#endif
                 }
 
                 if (result.score > alpha)
@@ -484,33 +656,84 @@ namespace
                     // Until this happens, we are an 'All-Node'
                     // Now we may be a 'PV-Node', or...
                     alpha = result.score;
+                    type = NodeType::Pv;
                 }
 
                 if (alpha >= beta)
                 {
                     // ...if this happens, we are a 'Cut-Node'
+                    type = NodeType::Cut;
                     goto end;
                 }
             }
         }
 
     end:
-
         // Note, we may return values outside of the range [alpha, beta]. This
         // makes us a 'fail-soft' version of alpha-beta pruning
+
+#ifdef USE_TT
+        if (depth > tt_ptr->depth)
+        {
+            tt_ptr->recommendation = result;
+            tt_ptr->depth = depth;
+            tt_ptr->type = type;
+        }
+#endif
         return result;
     }
 }  // namespace
 
 auto recommend_move(Position const& position) -> MoveRecommendation
 {
-    InternalMoveRecommendation const internal = recommend_move_negamax_ab_killer(
-        position.board()[position.player_to_move()],
-        position.board()[!position.player_to_move()],
-        6,
-        -big,
-        big,
-        {});
+#ifdef USE_TT
+    table = {};
+    pv_count = {};
+#endif
+    auto const friends = position.board()[position.player_to_move()];
+    auto const enemies = position.board()[!position.player_to_move()];
+
+    auto internal = InternalMoveRecommendation{};
+
+#ifdef USE_ID
+    for (auto depth = 1; depth <= DEPTH; ++depth)
+#else
+    auto const depth = int{DEPTH};
+#endif
+    {
+        internal = recommend_move_negamax_ab_killer(
+            friends,
+            enemies,
+            depth,
+            -big,
+            big
+#ifdef USE_KH
+            ,
+            {}
+#endif
+        );
+    }
+
+#ifdef USE_TT
+    std::cout << fmt::format("Table size: {}\n", table.size());
+
+    auto pv = std::vector<Move>{};
+
+    auto f = friends;
+    auto e = enemies;
+    while (true)
+    {
+        auto* value = table.find(f, e);
+        if (!value || value->type != NodeType::Pv)
+            break;
+        auto const& m = value->recommendation.move;
+        pv.push_back(m.to_standard_move());
+        apply_move_low_level(m.from_board, m.to_board, &f, &e);
+        std::swap(f, e);
+    }
+
+    std::cout << fmt::format("Pv: [{}]\n", fmt::join(pv.begin(), pv.end(), ", "));
+#endif
 
     return internal.to_standard_move_recommendation();
 }
