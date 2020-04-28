@@ -21,4 +21,4 @@ target_compile_options(rock PRIVATE "$<$<CONFIG:Release>:${ROCK_RELEASE_FLAGS}>"
 
 target_include_directories(rock PUBLIC ../include PRIVATE .)
 target_compile_features(rock PUBLIC cxx_std_17)
-target_link_libraries(rock PUBLIC fmt::fmt)
+target_link_libraries(rock PUBLIC fmt::fmt PRIVATE absl::hash absl::flat_hash_map)
