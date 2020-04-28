@@ -7,6 +7,7 @@
 #define USE_TT
 #define USE_ID
 #define USE_KH
+#define TT_RETURN_EARLY
 
 #define TT_MAP_TYPE_STD 0
 #define TT_MAP_TYPE_ABSL 1
@@ -97,8 +98,10 @@ namespace
 
         constexpr auto empty() const -> bool { return from_board == u64{} && to_board == u64{}; }
 
-        auto to_standard_move() const -> Move
+        auto to_standard_move() const -> std::optional<Move>
         {
+            if (empty())
+                return std::nullopt;
             return Move{
                 BoardCoordinates{coordinates_from_bit_board(from_board)},
                 BoardCoordinates{coordinates_from_bit_board(to_board)},
@@ -113,10 +116,7 @@ namespace
 
         auto to_standard_move_recommendation() const -> MoveRecommendation
         {
-            return {
-                move.to_standard_move(),
-                score,
-            };
+            return {move.to_standard_move(), score};
         }
     };
 
@@ -476,7 +476,8 @@ namespace
         auto try_emplace(u64 friends, u64 enemies) -> std::pair<Value*, bool>
         {
 #if TT_MAP_TYPE == TT_MAP_TYPE_ABSL
-            auto const [it, did_insert] = data_.try_emplace(std::tuple{friends, enemies}, std::make_unique<Value>());
+            auto const [it, did_insert] =
+                data_.try_emplace(std::tuple{friends, enemies}, std::make_unique<Value>());
             return {it->second.get(), did_insert};
 #else
             auto const [it, did_insert] = data_.try_emplace(std::tuple{friends, enemies}, Value{});
@@ -546,14 +547,14 @@ namespace
             // I'm not sure about this analysis, but certainly I saw
             // performance degradation if I just returned from here when I
             // found a match from a higher depth search.
-
-            // Theoretically we could do this, but it doesn't seem to improve
-            // times at all. However, adding this may produce better results in
-            // some cases if the recommendations are better (as a result of
-            // being from higher depth).
             //
-            // if (tt_ptr->type == NodeType::Pv && tt_ptr->depth >= depth)
-            //    return tt_ptr->recommendation;
+            // If the node was a pv node however, it is safe to return straight
+            // away. This doesn't seem to produce much advantage, but might make
+            // a difference in some cases.
+#ifdef TT_RETURN_EARLY
+            if (tt_ptr->type == NodeType::Pv && tt_ptr->depth >= depth)
+                return tt_ptr->recommendation;
+#endif
 
             auto const& move = tt_ptr->recommendation.move;
 
@@ -727,7 +728,9 @@ auto recommend_move(Position const& position) -> MoveRecommendation
         if (!value || value->type != NodeType::Pv)
             break;
         auto const& m = value->recommendation.move;
-        pv.push_back(m.to_standard_move());
+        if (m.empty())
+            break;
+        pv.push_back(m.to_standard_move().value());
         apply_move_low_level(m.from_board, m.to_board, &f, &e);
         std::swap(f, e);
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "types.h"
+#include <optional>
 #include <vector>
 
 namespace rock
@@ -20,7 +21,7 @@ auto get_game_outcome(Position const&) -> GameOutcome;
 
 struct MoveRecommendation
 {
-    Move move;
+    std::optional<Move> move;
     double score;
 };
 
