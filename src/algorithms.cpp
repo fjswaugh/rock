@@ -8,12 +8,13 @@
 #define USE_ID
 #define USE_KH
 #define TT_RETURN_EARLY
+#define TT_NO_DOUBLE_MOVE_ANALYSIS
 
 #define TT_MAP_TYPE_STD 0
 #define TT_MAP_TYPE_ABSL 1
 #define TT_MAP_TYPE TT_MAP_TYPE_ABSL
 
-#define DEPTH 6
+#define DEPTH 7
 
 #ifdef USE_TT
 
@@ -520,11 +521,11 @@ namespace
                 return tt_ptr->recommendation;
 #endif
 
-            auto const& move = tt_ptr->recommendation.move;
+            auto const& tt_move = tt_ptr->recommendation.move;
 
             auto friends_copy = friends;
             auto enemies_copy = enemies;
-            apply_move_low_level(move.from_board, move.to_board, &friends_copy, &enemies_copy);
+            apply_move_low_level(tt_move.from_board, tt_move.to_board, &friends_copy, &enemies_copy);
 
             auto const recommendation = recommend_move_negamax_ab_killer(
                 enemies_copy,
@@ -541,7 +542,7 @@ namespace
 
             if (score > result.score)
             {
-                result.move = move;
+                result.move = tt_move;
                 result.score = score;
 #ifdef USE_KH
                 killer_move = recommendation.move;
@@ -602,6 +603,14 @@ namespace
             while (move_set.to_board)
             {
                 auto const to_board = extract_one_bit(move_set.to_board);
+
+#ifdef TT_NO_DOUBLE_MOVE_ANALYSIS
+                if (auto const& tt_move = tt_ptr->recommendation.move;
+                    tt_move.from_board == move_set.from_board && tt_move.to_board == to_board)
+                {
+                    continue;
+                }
+#endif
 
                 auto friends_copy = friends;
                 auto enemies_copy = enemies;
