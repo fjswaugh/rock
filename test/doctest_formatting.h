@@ -32,11 +32,8 @@ struct StringMaker<std::vector<T>>
 {
     inline static String convert(std::vector<T> const& v)
     {
-        auto str = String{"["};
-        for (auto i = std::size_t{}; i != v.size(); ++i)
-            str += StringMaker<T>::convert(v[i]) + (i == v.size() - 1 ? "" : ", ");
-        str += "]";
-        return str;
+        auto str = fmt::format("[{}]", fmt::join(v.begin(), v.end(), ", "));
+        return String(str.c_str());
     }
 };
 
