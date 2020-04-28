@@ -389,12 +389,10 @@ namespace
         {all_circles.data[BoardCoordinates{3, 3}.data()][1], 1.0},
     };
 
-    auto evaluate_leaf_position(BitBoard friends, BitBoard enemies) -> double
+    auto evaluate_leaf_position(
+        BitBoard friends, BitBoard enemies, bool has_player_won, bool has_player_lost) -> double
     {
         auto res = double{};
-
-        bool const has_player_won = are_pieces_all_together(friends);
-        bool const has_player_lost = are_pieces_all_together(enemies);
 
         if (has_player_lost || has_player_won)
             res += 1000.0 * static_cast<double>(has_player_won - has_player_lost);
@@ -408,48 +406,12 @@ namespace
         return res;
     }
 
-    auto is_game_finished(BitBoard friends, BitBoard enemies) -> bool
+    auto evaluate_leaf_position(BitBoard friends, BitBoard enemies) -> double
     {
-        return count_moves(friends, enemies, 1) == 0 || are_pieces_all_together(friends) ||
-            are_pieces_all_together(enemies);
-    }
+        bool const has_player_won = are_pieces_all_together(friends);
+        bool const has_player_lost = are_pieces_all_together(enemies);
 
-    /**
-     * Simple negamax algorithm presented here for clarity
-     */
-    [[maybe_unused]] auto
-    recommend_move_negamax(BitBoard const friends, BitBoard const enemies, int const depth)
-        -> InternalMoveRecommendation
-    {
-        if (depth == 0 || is_game_finished(friends, enemies))
-            return {{}, evaluate_leaf_position(friends, enemies)};
-
-        auto result = InternalMoveRecommendation{{}, -big};
-
-        auto moves = generate_moves(friends, enemies);
-        for (auto move_set : moves)
-        {
-            while (move_set.to_board)
-            {
-                auto const to_board = extract_one_bit(move_set.to_board);
-
-                auto friends_copy = friends;
-                auto enemies_copy = enemies;
-                apply_move_low_level(move_set.from_board, to_board, &friends_copy, &enemies_copy);
-
-                auto const recommendation =
-                    recommend_move_negamax(enemies_copy, friends_copy, depth - 1);
-                auto const score = -recommendation.score;
-
-                if (score > result.score)
-                {
-                    result.move = {move_set.from_board, to_board};
-                    result.score = score;
-                }
-            }
-        }
-
-        return result;
+        return evaluate_leaf_position(friends, enemies, has_player_won, has_player_lost);
     }
 
     enum struct NodeType
@@ -525,12 +487,20 @@ namespace
 #endif
         ) -> InternalMoveRecommendation
     {
-        if (depth == 0 || is_game_finished(friends, enemies))
+        if (depth == 0)
             return {{}, evaluate_leaf_position(friends, enemies)};
 
-        auto moves = InternalMoveList{};
+        auto moves = generate_moves(friends, enemies);
         auto result = InternalMoveRecommendation{{}, -big};
         auto type = NodeType{};
+
+        // if game is over, return early
+        bool const has_player_won = are_pieces_all_together(friends);
+        bool const has_player_lost = are_pieces_all_together(enemies);
+        if (moves.size() == 0 || has_player_won || has_player_lost)
+        {
+            return {{}, evaluate_leaf_position(friends, enemies, has_player_won, has_player_lost)};
+        }
 
 #ifdef USE_TT
         auto const [tt_ptr, was_empty] = table.try_emplace(friends, enemies);
@@ -600,8 +570,6 @@ namespace
             }
         }
 #endif
-
-        moves = generate_moves(friends, enemies);
 
 #ifdef USE_KH
         if (!killer_move.empty())
