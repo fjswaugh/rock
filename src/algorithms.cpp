@@ -1,8 +1,31 @@
+//#define NO_USE_TT
+//#define NO_USE_KILLER
+//#define NO_USE_NEGASCOUT
+//#define DIAGNOSTICS
+//#define NO_USE_CUSTOM_TT
+
+#define DEPTH 8
+
 #include "rock/algorithms.h"
 #include "bit_operations.h"
+#include "diagnostics.h"
+#include "internal_types.h"
+#include "rock/format.h"
 #include "rock/parse.h"
 #include "table_generation.h"
+#include "transposition_table.h"
+#include <fmt/format.h>
 #include <algorithm>
+#include <iostream>
+#include <random>
+
+#ifndef NO_USE_TT
+
+#include <absl/container/flat_hash_map.h>
+#include <absl/hash/hash.h>
+#include <memory>
+
+#endif
 
 // TODO:
 // - Consider using strong types more, instead of lots of u64s
@@ -12,9 +35,13 @@
 // - Consider better algorithm for detemining if game is over
 //   - This check is probably done too many times in the search code
 // - Create some kind of stateful AI object to remember information
+// - Create some kind of analysis of what is going on in the search tree
+// - Create interface to take advantage of iterative deepening
 
 namespace rock
 {
+
+using namespace internal;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Apply move
@@ -52,91 +79,12 @@ auto apply_move(Move const m, Position p) -> Position
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Internal structures for more efficiency
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-namespace
-{
-    /**
-     * Internal move is a more flexible version of the normal move type. The move is represented in
-     * terms of bitboards, which allows multiple moves to be effectively stored in the same object,
-     * and also allows for an 'empty' move state.
-     */
-    struct InternalMove
-    {
-        u64 from_board;
-        u64 to_board;
-
-        constexpr auto empty() const -> bool { return from_board == u64{} && to_board == u64{}; }
-
-        auto to_standard_move() const -> Move
-        {
-            return Move{
-                BoardCoordinates{coordinates_from_bit_board(from_board)},
-                BoardCoordinates{coordinates_from_bit_board(to_board)},
-            };
-        }
-    };
-
-    struct InternalMoveRecommendation
-    {
-        InternalMove move;
-        double score;
-
-        auto to_standard_move_recommendation() const -> MoveRecommendation
-        {
-            return {
-                move.to_standard_move(),
-                score,
-            };
-        }
-    };
-
-    /**
-     * The purpose of `InternalMoveList` is to provide an efficient way to store generated moves.
-     */
-    struct InternalMoveList
-    {
-        void push_back(InternalMove move_set)
-        {
-            assert(pop_count(move_set.from_board) == 1);
-            assert(size_ < max_size);
-            moves_[size_++] = move_set;
-        }
-        constexpr auto begin() const -> InternalMove const* { return &moves_[0]; }
-        constexpr auto end() const -> InternalMove const* { return this->begin() + size_; }
-        constexpr auto begin() -> InternalMove* { return &moves_[0]; }
-        constexpr auto end() -> InternalMove* { return this->begin() + size_; }
-        constexpr auto size() const { return size_; }
-
-    private:
-        constexpr static auto max_size = 12;
-
-        InternalMove moves_[max_size];
-        std::size_t size_{};
-    };
-
-    template <typename F>
-    auto for_each_move(InternalMoveList& moves, F&& f) -> void
-    {
-        for (auto move_set : moves)
-        {
-            while (move_set.to_board)
-            {
-                auto const to_board = extract_one_bit(move_set.to_board);
-                f(move_set.from_board, to_board);
-            }
-        }
-    }
-}  // namespace
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
 // Function implementations
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace
 {
-    constexpr double big = 10000.0;
+    constexpr ScoreType big = 1'000'000'000ll;
 
     template <typename T, std::size_t N>
     using array_ref = T const (&)[N];
@@ -192,6 +140,15 @@ namespace
         auto const enemies = position.board()[!position.player_to_move()];
 
         return generate_legal_destinations(from.data(), friends, enemies);
+    }
+
+    auto is_move_legal(InternalMove move, BitBoard const friends, BitBoard const enemies) -> bool
+    {
+        if (!(move.from_board & friends))
+            return false;
+
+        auto const from_coordinates = coordinates_from_bit_board(move.from_board);
+        return generate_legal_destinations(from_coordinates, friends, enemies) & move.to_board;
     }
 
     auto generate_moves(BitBoard const friends, BitBoard const enemies) -> InternalMoveList
@@ -355,107 +312,255 @@ auto get_game_outcome(Position const& position) -> GameOutcome
 
 namespace
 {
-    constexpr std::pair<BitBoard, double> important_positions[] = {
-        {all_circles.data[BoardCoordinates{3, 3}.data()][3], 1.0},
-        {all_circles.data[BoardCoordinates{3, 3}.data()][2], 1.0},
-        {all_circles.data[BoardCoordinates{3, 3}.data()][1], 1.0},
+    constexpr std::pair<BitBoard, ScoreType> important_positions[] = {
+        {all_circles.data[BoardCoordinates{3, 3}.data()][3], 10},
+        {all_circles.data[BoardCoordinates{3, 3}.data()][2], 10},
+        {all_circles.data[BoardCoordinates{3, 3}.data()][1], 10},
     };
 
-    auto evaluate_leaf_position(BitBoard friends, BitBoard enemies) -> double
+    auto evaluate_leaf_position(
+        BitBoard friends, BitBoard enemies, bool has_player_won, bool has_player_lost) -> ScoreType
     {
-        auto res = double{};
-
-        bool const has_player_won = are_pieces_all_together(friends);
-        bool const has_player_lost = are_pieces_all_together(enemies);
+        auto res = ScoreType{};
 
         if (has_player_lost || has_player_won)
-            res += 1000.0 * static_cast<double>(has_player_won - has_player_lost);
+            res += big * static_cast<ScoreType>(has_player_won - has_player_lost);
 
         for (auto const& [positions, value] : important_positions)
         {
-            res += value * static_cast<double>(pop_count(positions & friends));
-            res -= value * static_cast<double>(pop_count(positions & enemies));
+            res += value * static_cast<ScoreType>(pop_count(positions & friends));
+            res -= value * static_cast<ScoreType>(pop_count(positions & enemies));
         }
 
         return res;
     }
 
-    auto is_game_finished(BitBoard friends, BitBoard enemies) -> bool
+    auto evaluate_leaf_position(BitBoard friends, BitBoard enemies) -> ScoreType
     {
-        return count_moves(friends, enemies, 1) == 0 || are_pieces_all_together(friends) ||
-            are_pieces_all_together(enemies);
+        bool const has_player_won = are_pieces_all_together(friends);
+        bool const has_player_lost = are_pieces_all_together(enemies);
+
+        return evaluate_leaf_position(friends, enemies, has_player_won, has_player_lost);
     }
 
-    /**
-     * Simple negamax algorithm presented here for clarity
-     */
-    [[maybe_unused]] auto
-    recommend_move_negamax(BitBoard const friends, BitBoard const enemies, int const depth)
+#ifndef NO_USE_TT
+    TranspositionTable table{};
+    int pv_count{};
+#endif
+
+    struct Searcher
+    {
+#ifndef NO_USE_KILLER
+        explicit Searcher(
+            BitBoard friends,
+            BitBoard enemies,
+            int depth,
+            ScoreType alpha,
+            ScoreType beta,
+            InternalMove killer_move = {});
+#else
+        explicit Searcher(
+            BitBoard friends, BitBoard enemies, int depth, ScoreType alpha, ScoreType beta);
+#endif
+
+        auto search() -> InternalMoveRecommendation;
+
+    private:
+        // Internal functions
+        auto search_next(BitBoard friends, BitBoard enemies, ScoreType alpha, ScoreType beta)
+            -> InternalMoveRecommendation;
+        auto main_search() -> void;
+        auto process_move(InternalMove) -> void;
+        auto add_to_transposition_table() -> void;
+
+        // Input arguments
+        BitBoard friends_;
+        BitBoard enemies_;
+        int depth_;
+        ScoreType alpha_;
+        ScoreType beta_;
+#ifndef NO_USE_KILLER
+        InternalMove killer_move_;
+#endif
+
+        // Internal data
+#ifndef NO_USE_KILLER
+        InternalMove next_killer_move_{};
+#endif
+        InternalMoveRecommendation best_result_;
+        NodeType node_type_;
+        int move_count_{};
+
+#ifdef DIAGNOSTICS
+        Diagnostics::Scratchpad scratchpad_{};
+#endif
+    };
+
+#ifndef NO_USE_KILLER
+    Searcher::Searcher(
+        BitBoard friends,
+        BitBoard enemies,
+        int depth,
+        ScoreType alpha,
+        ScoreType beta,
+        InternalMove killer_move)
+        : friends_{friends},
+          enemies_{enemies},
+          depth_{depth},
+          alpha_{alpha},
+          beta_{beta},
+          killer_move_{killer_move}
+    {}
+#else
+    Searcher::Searcher(
+        BitBoard friends, BitBoard enemies, int depth, ScoreType alpha, ScoreType beta)
+        : friends_{friends}, enemies_{enemies}, depth_{depth}, alpha_{alpha}, beta_{beta}
+    {}
+#endif
+
+    auto Searcher::search_next(BitBoard friends, BitBoard enemies, ScoreType alpha, ScoreType beta)
         -> InternalMoveRecommendation
     {
-        if (depth == 0 || is_game_finished(friends, enemies))
-            return {{}, evaluate_leaf_position(friends, enemies)};
-
-        auto result = InternalMoveRecommendation{{}, -big};
-
-        auto moves = generate_moves(friends, enemies);
-        for (auto move_set : moves)
-        {
-            while (move_set.to_board)
-            {
-                auto const to_board = extract_one_bit(move_set.to_board);
-
-                auto friends_copy = friends;
-                auto enemies_copy = enemies;
-                apply_move_low_level(move_set.from_board, to_board, &friends_copy, &enemies_copy);
-
-                auto const recommendation =
-                    recommend_move_negamax(enemies_copy, friends_copy, depth - 1);
-                auto const score = -recommendation.score;
-
-                if (score > result.score)
-                {
-                    result.move = {move_set.from_board, to_board};
-                    result.score = score;
-                }
-            }
-        }
-
-        return result;
+#ifndef NO_USE_KILLER
+        auto searcher = Searcher(friends, enemies, depth_ - 1, alpha, beta, next_killer_move_);
+#else
+        auto searcher = Searcher(friends, enemies, depth_ - 1, alpha, beta);
+#endif
+        return searcher.search();
     }
 
-    /**
-     * Negamax algorithm with alpha-beta pruning and the killer heuristic.
-     * The `killer_move` parameter may be empty.
-     */
-    auto recommend_move_negamax_ab_killer(
-        BitBoard const friends,
-        BitBoard const enemies,
-        int depth,
-        double alpha,
-        double beta,
-        InternalMove killer_move) -> InternalMoveRecommendation
+    auto Searcher::search() -> InternalMoveRecommendation
     {
-        if (depth == 0 || is_game_finished(friends, enemies))
-            return {{}, evaluate_leaf_position(friends, enemies)};
-
-        auto result = InternalMoveRecommendation{{}, -big};
-
-        auto moves = generate_moves(friends, enemies);
-
-        if (!killer_move.empty())
+        if (depth_ == 0)
         {
-            auto const move_matches_killer = [&killer_move](InternalMove const& move) {
-                return (move.from_board & killer_move.from_board) &&
-                    (move.to_board & killer_move.to_board);
-            };
+            return {InternalMove{}, evaluate_leaf_position(friends_, enemies_)};
+        }
+        else
+        {
+            main_search();
+            DIAGNOSTICS_UPDATE_AFTER_SEARCH(best_result_, move_count_);
+            add_to_transposition_table();
+            return best_result_;
+        }
+    }
 
-            if (auto it = std::find_if(moves.begin(), moves.end(), move_matches_killer);
-                it != moves.end())
+    auto Searcher::process_move(InternalMove move) -> void
+    {
+        auto friends_copy = friends_;
+        auto enemies_copy = enemies_;
+        apply_move_low_level(move.from_board, move.to_board, &friends_copy, &enemies_copy);
+
+        InternalMoveRecommendation recommendation;
+        ScoreType score;
+
+#ifndef NO_USE_NEGASCOUT
+        if (move_count_ > 0)
+        {
+            recommendation = search_next(enemies_copy, friends_copy, -alpha_ - 1, -alpha_);
+            score = -recommendation.score;
+
+            bool const must_re_search = score > alpha_ && score < beta_;
+
+            if (must_re_search)
             {
-                std::swap(*moves.begin(), *it);
+                recommendation = search_next(enemies_copy, friends_copy, -beta_, -score);
+                score = -recommendation.score;
             }
-            killer_move = {};
+
+            DIAGNOSTICS_UPDATE(negascout_re_search, must_re_search);
+        }
+        else
+#endif
+        {
+            recommendation = search_next(enemies_copy, friends_copy, -beta_, -alpha_);
+            score = -recommendation.score;
+        }
+
+        if (score > best_result_.score)
+        {
+            best_result_.move = move;
+            best_result_.score = score;
+#ifndef NO_USE_KILLER
+            next_killer_move_ = recommendation.move;
+#endif
+        }
+
+        if (best_result_.score > alpha_)
+        {
+            // Until this happens, we are an 'All-Node'
+            // Now we may be a 'PV-Node', or...
+            alpha_ = best_result_.score;
+            node_type_ = NodeType::Pv;
+        }
+
+        if (alpha_ >= beta_)
+        {
+            // ...if this happens, we are a 'Cut-Node'
+            node_type_ = NodeType::Cut;
+        }
+
+        DIAGNOSTICS_UPDATE_AFTER_MOVE(node_type_, score);
+
+        ++move_count_;
+    }
+
+    auto Searcher::main_search() -> void
+    {
+        DIAGNOSTICS_UPDATE_BEFORE_SEARCH();
+
+        best_result_ = InternalMoveRecommendation{InternalMove{}, -big};
+        node_type_ = NodeType::All;
+
+#ifndef NO_USE_TT
+        // Check the transposition table before checking if the game is over
+        // (this works out faster)
+        auto const [tt_ptr, was_found] = table.lookup(friends_, enemies_);
+        auto tt_move = InternalMove{};
+        DIAGNOSTICS_UPDATE(tt_had_move_cached, was_found);
+        if (was_found)
+        {
+            tt_move = tt_ptr->recommendation.move;
+
+            bool const tt_is_exact_match = tt_move.empty() ||
+                (tt_ptr->type == NodeType::Pv && tt_ptr->depth >= depth_);
+
+            DIAGNOSTICS_UPDATE(tt_move_is_exact_match, tt_is_exact_match);
+            if (tt_is_exact_match)
+            {
+                best_result_ = tt_ptr->recommendation;
+                return;
+            }
+
+            DIAGNOSTICS_PREPARE_TT_MOVE();
+            this->process_move(tt_move);
+            if (node_type_ == NodeType::Cut)
+                return;
+        }
+#endif
+
+#ifndef NO_USE_KILLER
+        if (!killer_move_.empty() && is_move_legal(killer_move_, friends_, enemies_))
+        {
+            DIAGNOSTICS_PREPARE_KILLER_MOVE();
+            this->process_move(killer_move_);
+            if (node_type_ == NodeType::Cut)
+                return;
+        }
+#endif
+
+        auto moves = generate_moves(friends_, enemies_);
+
+        // if game is over, return early
+        {
+            bool const has_player_won = are_pieces_all_together(friends_);
+            bool const has_player_lost = are_pieces_all_together(enemies_);
+            if (moves.size() == 0 || has_player_won || has_player_lost)
+            {
+                best_result_.move = InternalMove{};
+                best_result_.score =
+                    evaluate_leaf_position(friends_, enemies_, has_player_won, has_player_lost);
+                return;
+            }
         }
 
         for (auto move_set : moves)
@@ -463,64 +568,101 @@ namespace
             while (move_set.to_board)
             {
                 auto const to_board = extract_one_bit(move_set.to_board);
+                auto const move = InternalMove{move_set.from_board, to_board};
 
-                auto friends_copy = friends;
-                auto enemies_copy = enemies;
-                apply_move_low_level(move_set.from_board, to_board, &friends_copy, &enemies_copy);
+#ifndef NO_USE_KILLER
+                if (killer_move_ == move)
+                    continue;
+#endif
 
-                auto const recommendation = recommend_move_negamax_ab_killer(
-                    enemies_copy, friends_copy, depth - 1, -beta, -alpha, killer_move);
-                auto const score = -recommendation.score;
+#ifndef NO_USE_TT
+                if (tt_move == move)
+                    continue;
+#endif
 
-                if (score > result.score)
-                {
-                    result.move = {move_set.from_board, to_board};
-                    result.score = score;
-                    killer_move = recommendation.move;
-                }
-
-                if (result.score > alpha)
-                {
-                    // Until this happens, we are an 'All-Node'
-                    // Now we may be a 'PV-Node', or...
-                    alpha = result.score;
-                }
-
-                if (alpha >= beta)
-                {
-                    // ...if this happens, we are a 'Cut-Node'
-                    goto end;
-                }
+                this->process_move(move);
+                if (node_type_ == NodeType::Cut)
+                    return;
             }
         }
 
-    end:
-
-        // Note, we may return values outside of the range [alpha, beta]. This
-        // makes us a 'fail-soft' version of alpha-beta pruning
-        return result;
+        // Note, we may return values outside of the range [alpha, beta] (if we
+        // are an 'all' node and score below alpha). This makes us a 'fail-soft'
+        // version of alpha-beta pruning.
     }
+
+    auto Searcher::add_to_transposition_table() -> void
+    {
+#ifndef NO_USE_TT
+        auto const [tt_ptr, was_found] = table.lookup(friends_, enemies_);
+
+        bool const are_we_pv = node_type_ == NodeType::Pv;
+        bool const are_tt_pv = tt_ptr->type == NodeType::Pv;
+
+        if ((!are_we_pv && !are_tt_pv && depth_ > tt_ptr->depth) ||
+            (are_we_pv && (!are_tt_pv || depth_ > tt_ptr->depth)))
+        {
+            tt_ptr->set_key(friends_, enemies_);
+            tt_ptr->recommendation = best_result_;
+            tt_ptr->depth = depth_;
+            tt_ptr->type = node_type_;
+        }
+#endif
+    }
+
 }  // namespace
 
 auto recommend_move(Position const& position) -> MoveRecommendation
 {
-    InternalMoveRecommendation const internal = recommend_move_negamax_ab_killer(
-        position.board()[position.player_to_move()],
-        position.board()[!position.player_to_move()],
-        6,
-        -big,
-        big,
-        {});
+#ifndef NO_USE_TT
+    table.reset();
+    pv_count = {};
+#endif
+#ifdef DIAGNOSTICS
+    diagnostics = {};
+#endif
+    auto const friends = position.board()[position.player_to_move()];
+    auto const enemies = position.board()[!position.player_to_move()];
+
+    auto internal = InternalMoveRecommendation{};
+
+    for (auto depth = 1; depth <= DEPTH; ++depth)
+        internal = Searcher(friends, enemies, depth, -big, big).search();
+
+#ifndef NO_USE_TT
+    auto pv = std::vector<Move>{};
+
+    auto f = friends;
+    auto e = enemies;
+    while (true)
+    {
+        auto const [value, was_found] = table.lookup(f, e);
+        if (!was_found || value->type != NodeType::Pv)
+            break;
+        auto const& m = value->recommendation.move;
+        if (m.empty())
+            break;
+        pv.push_back(m.to_standard_move().value());
+        apply_move_low_level(m.from_board, m.to_board, &f, &e);
+        std::swap(f, e);
+    }
+
+    std::cout << fmt::format("Pv: [{}]\n", fmt::join(pv.begin(), pv.end(), ", "));
+#endif
+
+#ifdef DIAGNOSTICS
+    std::cout << diagnostics.to_string() << '\n';
+#endif
 
     return internal.to_standard_move_recommendation();
 }
 
-auto evaluate_position(Position const& position) -> double
+auto evaluate_position(Position const& position) -> ScoreType
 {
     return recommend_move(position).score;
 }
 
-auto normalize_score(double const score, Player const player) -> double
+auto normalize_score(ScoreType const score, Player const player) -> ScoreType
 {
     return player == Player::Black ? -score : score;
 }

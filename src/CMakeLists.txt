@@ -7,6 +7,9 @@ add_library(rock
     game.cpp
     fen.cpp
     types.cpp
+    transposition_table.h
+    diagnostics.h
+    internal_types.h
     ../include/rock/fen.h
     ../include/rock/game.h
     ../include/rock/algorithms.h
