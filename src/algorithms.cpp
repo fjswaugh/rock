@@ -1,23 +1,25 @@
+//#define NO_USE_TT
+//#define NO_USE_KILLER
+//#define NO_USE_NEGASCOUT
+//#define DIAGNOSTICS
+//#define NO_USE_CUSTOM_TT
+
+#define DEPTH 8
+
 #include "rock/algorithms.h"
 #include "bit_operations.h"
+#include "diagnostics.h"
+#include "internal_types.h"
 #include "rock/format.h"
 #include "rock/parse.h"
 #include "table_generation.h"
+#include "transposition_table.h"
 #include <fmt/format.h>
 #include <algorithm>
 #include <iostream>
 #include <random>
 
-#define USE_TT
-#define USE_CUSTOM_TT
-#define USE_ID
-#define USE_KH
-#define USE_NS
-#define DIAGNOSTICS
-
-#define DEPTH 8
-
-#ifdef USE_TT
+#ifndef NO_USE_TT
 
 #include <absl/container/flat_hash_map.h>
 #include <absl/hash/hash.h>
@@ -38,6 +40,8 @@
 
 namespace rock
 {
+
+using namespace internal;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Apply move
@@ -73,92 +77,6 @@ auto apply_move(Move const m, Position p) -> Position
     p.set_player_to_move(!p.player_to_move());
     return p;
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Internal structures for more efficiency
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-namespace
-{
-    /**
-     * Internal move is a more flexible version of the normal move type. The move is represented in
-     * terms of bitboards, which allows multiple moves to be effectively stored in the same object,
-     * and also allows for an 'empty' move state.
-     */
-    struct InternalMove
-    {
-        u64 from_board;
-        u64 to_board;
-
-        friend constexpr auto operator==(InternalMove const& m1, InternalMove const& m2) -> bool
-        {
-            return m1.from_board == m2.from_board && m1.to_board == m2.to_board;
-        }
-        friend constexpr auto operator!=(InternalMove const& m1, InternalMove const& m2) -> bool
-        {
-            return m1.from_board != m2.from_board || m1.to_board != m2.to_board;
-        }
-        constexpr auto empty() const -> bool { return from_board == u64{} && to_board == u64{}; }
-
-        auto to_standard_move() const -> std::optional<Move>
-        {
-            if (empty())
-                return std::nullopt;
-            return Move{
-                BoardCoordinates{coordinates_from_bit_board(from_board)},
-                BoardCoordinates{coordinates_from_bit_board(to_board)},
-            };
-        }
-    };
-
-    struct InternalMoveRecommendation
-    {
-        InternalMove move;
-        ScoreType score;
-
-        auto to_standard_move_recommendation() const -> MoveRecommendation
-        {
-            return {move.to_standard_move(), score};
-        }
-    };
-
-    /**
-     * The purpose of `InternalMoveList` is to provide an efficient way to store generated moves.
-     */
-    struct InternalMoveList
-    {
-        void push_back(InternalMove move_set)
-        {
-            assert(pop_count(move_set.from_board) == 1);
-            assert(size_ < max_size);
-            moves_[size_++] = move_set;
-        }
-        constexpr auto begin() const -> InternalMove const* { return &moves_[0]; }
-        constexpr auto end() const -> InternalMove const* { return this->begin() + size_; }
-        constexpr auto begin() -> InternalMove* { return &moves_[0]; }
-        constexpr auto end() -> InternalMove* { return this->begin() + size_; }
-        constexpr auto size() const { return size_; }
-
-    private:
-        constexpr static auto max_size = 12;
-
-        InternalMove moves_[max_size];
-        std::size_t size_{};
-    };
-
-    template <typename F>
-    auto for_each_move(InternalMoveList& moves, F&& f) -> void
-    {
-        for (auto move_set : moves)
-        {
-            while (move_set.to_board)
-            {
-                auto const to_board = extract_one_bit(move_set.to_board);
-                f(move_set.from_board, to_board);
-            }
-        }
-    }
-}  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Function implementations
@@ -425,279 +343,14 @@ namespace
         return evaluate_leaf_position(friends, enemies, has_player_won, has_player_lost);
     }
 
-    enum struct NodeType
-    {
-        All,
-        Pv,
-        Cut,
-    };
-
-#ifdef DIAGNOSTICS
-    struct Boolean
-    {
-        u64 yes{};
-        u64 total{};
-
-        auto update(bool is_yes) -> void
-        {
-            if (is_yes)
-                ++yes;
-            ++total;
-        }
-
-        auto to_string() const -> std::string
-        {
-            auto const percent = 100.0 * static_cast<double>(yes) / static_cast<double>(total);
-            return fmt::format("{} / {} ({}%)", yes, total, percent);
-        }
-    };
-
-    struct Number
-    {
-        u64 sum;
-        u64 count;
-
-        auto update(u64 num) -> void
-        {
-            sum += num;
-            ++count;
-        }
-
-        auto to_string() const -> std::string
-        {
-            auto const mean = static_cast<double>(sum) / static_cast<double>(count);
-            return fmt::format("mean = {} (count = {})", mean, count);
-        }
-    };
-
-    struct Diagnostics
-    {
-        struct Scratchpad
-        {
-            bool processing_tt_move{};
-            bool processing_killer_move{};
-            std::optional<ScoreType> tt_move_score{};
-            std::optional<ScoreType> killer_move_score{};
-            std::optional<ScoreType> first_move_score{};
-        };
-
-        // If a certain move is 'best' that means either produced a cut or was actually best
-
-        Boolean tt_hash_collisions{};
-        Boolean tt_had_move_cached{};
-        Boolean tt_move_is_exact_match{};
-        Boolean tt_move_makes_cut{};
-        Boolean tt_move_is_best{};
-
-        Boolean killer_move_exists{};
-        Boolean killer_move_is_legal{};
-        Boolean killer_move_makes_cut{};
-        Boolean killer_move_is_best{};
-
-        Boolean first_move_makes_cut{};
-        Boolean first_move_is_best{};
-
-        Boolean negascout_re_search{};
-
-        Number num_moves_considered{};
-
-        auto to_string() const -> std::string
-        {
-            return "--- Diagnostics ---\n" +
-                fmt::format("tt_hash_collisions: {}\n", tt_hash_collisions.to_string()) +
-                fmt::format("tt_had_move_cached: {}\n", tt_had_move_cached.to_string()) +
-                fmt::format("tt_move_is_exact_match: {}\n", tt_move_is_exact_match.to_string()) +
-                fmt::format("tt_move_makes_cut: {}\n", tt_move_makes_cut.to_string()) +
-                fmt::format("tt_move_is_best: {}\n", tt_move_is_best.to_string()) +
-                fmt::format("killer_move_exists: {}\n", killer_move_exists.to_string()) +
-                fmt::format("killer_move_is_legal: {}\n", killer_move_is_legal.to_string()) +
-                fmt::format("killer_move_makes_cut: {}\n", killer_move_makes_cut.to_string()) +
-                fmt::format("killer_move_is_best: {}\n", killer_move_is_best.to_string()) +
-                fmt::format("first_move_makes_cut: {}\n", first_move_makes_cut.to_string()) +
-                fmt::format("first_move_is_best: {}\n", first_move_is_best.to_string()) +
-                fmt::format("negascout_re_search: {}\n", negascout_re_search.to_string()) +
-                fmt::format("num_moves_considered: {}\n", num_moves_considered.to_string());
-        }
-    };
-
-    Diagnostics diagnostics{};
-#endif
-
-#ifdef DIAGNOSTICS
-#define DIAGNOSTICS_UPDATE(FIELD, VALUE) diagnostics.FIELD.update(VALUE)
-#define DIAGNOSTICS_PREPARE_KILLER_MOVE() scratchpad_.processing_killer_move = true
-#define DIAGNOSTICS_PREPARE_TT_MOVE() scratchpad_.processing_tt_move = true
-
-#ifdef USE_KH
-#define DIAGNOSTICS_UPDATE_BEFORE_SEARCH()                                                         \
-    do                                                                                             \
-    {                                                                                              \
-        diagnostics.killer_move_exists.update(!killer_move_.empty());                              \
-        if (!killer_move_.empty())                                                                 \
-            diagnostics.killer_move_is_legal.update(                                               \
-                is_move_legal(killer_move_, friends_, enemies_));                                  \
-    } while (false)
-#else
-#define DIAGNOSTICS_UPDATE_BEFORE_SEARCH()
-#endif
-
-#define DIAGNOSTICS_UPDATE_AFTER_SEARCH()                                                          \
-    do                                                                                             \
-    {                                                                                              \
-        if (scratchpad_.first_move_score)                                                          \
-        {                                                                                          \
-            diagnostics.first_move_is_best.update(                                                 \
-                *scratchpad_.first_move_score >= best_result_.score);                              \
-        }                                                                                          \
-        if (scratchpad_.killer_move_score)                                                         \
-        {                                                                                          \
-            diagnostics.killer_move_is_best.update(                                                \
-                *scratchpad_.killer_move_score >= best_result_.score);                             \
-        }                                                                                          \
-        if (scratchpad_.tt_move_score)                                                             \
-        {                                                                                          \
-            diagnostics.tt_move_is_best.update(*scratchpad_.tt_move_score >= best_result_.score);  \
-        }                                                                                          \
-        diagnostics.num_moves_considered.update(static_cast<u64>(move_count_));                    \
-    } while (false)
-
-#define DIAGNOSTICS_UPDATE_AFTER_MOVE(TYPE, SCORE)                                                 \
-    do                                                                                             \
-    {                                                                                              \
-        if (move_count_ == 0)                                                                      \
-        {                                                                                          \
-            diagnostics.first_move_makes_cut.update(TYPE == NodeType::Cut);                        \
-            scratchpad_.first_move_score = SCORE;                                                  \
-        }                                                                                          \
-        if (scratchpad_.processing_tt_move)                                                        \
-        {                                                                                          \
-            diagnostics.tt_move_makes_cut.update(TYPE == NodeType::Cut);                           \
-            scratchpad_.tt_move_score = SCORE;                                                     \
-            scratchpad_.processing_tt_move = false;                                                \
-        }                                                                                          \
-        if (scratchpad_.processing_killer_move)                                                    \
-        {                                                                                          \
-            diagnostics.killer_move_makes_cut.update(TYPE == NodeType::Cut);                       \
-            scratchpad_.killer_move_score = SCORE;                                                 \
-            scratchpad_.processing_killer_move = false;                                            \
-        }                                                                                          \
-    } while (false)
-
-#else
-#define DIAGNOSTICS_UPDATE(FIELD, VALUE)
-#define DIAGNOSTICS_PREPARE_KILLER_MOVE()
-#define DIAGNOSTICS_PREPARE_TT_MOVE()
-#define DIAGNOSTICS_UPDATE_BEFORE_SEARCH()
-#define DIAGNOSTICS_UPDATE_AFTER_SEARCH()
-#define DIAGNOSTICS_UPDATE_AFTER_MOVE(TYPE, SCORE)
-#endif
-
-#ifdef USE_TT
-#ifdef USE_CUSTOM_TT
-    auto compute_hash(u64 friends, u64 enemies) -> std::size_t
-    {
-        auto const key = std::tuple{friends, enemies};
-        return absl::Hash<decltype(key)>{}(key);
-    }
-
-    struct TranspositionTable
-    {
-    public:
-        struct Value
-        {
-        private:
-            friend struct TranspositionTable;
-
-            u64 friends_{};
-            u64 enemies_{};
-
-            constexpr auto matches(u64 f, u64 e) const -> bool
-            {
-                return f == friends_ && e == enemies_;
-            }
-
-        public:
-            constexpr auto set_key(u64 friends, u64 enemies) -> void
-            {
-                friends_ = friends;
-                enemies_ = enemies;
-            }
-
-            InternalMoveRecommendation recommendation{};
-            int depth{};
-            NodeType type{};
-        };
-
-        static constexpr auto size = std::size_t{20};
-
-        TranspositionTable() : data_(std::size_t{2} << size, Value{}) {}
-
-        auto reset() -> void { std::fill(data_.begin(), data_.end(), Value{}); }
-
-        struct LookupResult
-        {
-            Value* value;
-            bool was_found;
-        };
-
-        auto lookup(u64 friends, u64 enemies) -> LookupResult
-        {
-            auto const index = compute_hash(friends, enemies) % (std::size_t{2} << size);
-            auto* value = &data_[index];
-#ifdef DIAGNOSTICS
-            bool const is_collision = (value->friends_ != 0 || value->enemies_ != 0) &&
-                !value->matches(friends, enemies);
-            diagnostics.tt_hash_collisions.update(is_collision);
-#endif
-            return {value, value->matches(friends, enemies)};
-        }
-
-    private:
-        std::vector<Value> data_{};
-    };
-#else
-    struct TranspositionTable
-    {
-    public:
-        using Key = std::pair<u64, u64>;
-
-        struct Value
-        {
-            constexpr auto set_key(u64, u64) -> void {}
-
-            InternalMoveRecommendation recommendation{};
-            int depth{};
-            NodeType type{};
-        };
-
-        TranspositionTable() = default;
-
-        auto reset() -> void { data_ = {}; }
-
-        struct LookupResult
-        {
-            Value* value;
-            bool was_found;
-        };
-
-        auto lookup(u64 friends, u64 enemies) -> LookupResult
-        {
-            auto const [it, did_insert] = data_.try_emplace(std::pair{friends, enemies});
-            return {&it->second, !did_insert};
-        }
-
-    private:
-        absl::flat_hash_map<Key, Value> data_{};
-    };
-#endif
-
+#ifndef NO_USE_TT
     TranspositionTable table{};
     int pv_count{};
 #endif
 
     struct Searcher
     {
-#ifdef USE_KH
+#ifndef NO_USE_KILLER
         explicit Searcher(
             BitBoard friends,
             BitBoard enemies,
@@ -726,12 +379,12 @@ namespace
         int depth_;
         ScoreType alpha_;
         ScoreType beta_;
-#ifdef USE_KH
+#ifndef NO_USE_KILLER
         InternalMove killer_move_;
 #endif
 
         // Internal data
-#ifdef USE_KH
+#ifndef NO_USE_KILLER
         InternalMove next_killer_move_{};
 #endif
         InternalMoveRecommendation best_result_;
@@ -743,7 +396,7 @@ namespace
 #endif
     };
 
-#ifdef USE_KH
+#ifndef NO_USE_KILLER
     Searcher::Searcher(
         BitBoard friends,
         BitBoard enemies,
@@ -768,7 +421,7 @@ namespace
     auto Searcher::search_next(BitBoard friends, BitBoard enemies, ScoreType alpha, ScoreType beta)
         -> InternalMoveRecommendation
     {
-#ifdef USE_KH
+#ifndef NO_USE_KILLER
         auto searcher = Searcher(friends, enemies, depth_ - 1, alpha, beta, next_killer_move_);
 #else
         auto searcher = Searcher(friends, enemies, depth_ - 1, alpha, beta);
@@ -785,7 +438,7 @@ namespace
         else
         {
             main_search();
-            DIAGNOSTICS_UPDATE_AFTER_SEARCH();
+            DIAGNOSTICS_UPDATE_AFTER_SEARCH(best_result_, move_count_);
             add_to_transposition_table();
             return best_result_;
         }
@@ -800,7 +453,7 @@ namespace
         InternalMoveRecommendation recommendation;
         ScoreType score;
 
-#ifdef USE_NS
+#ifndef NO_USE_NEGASCOUT
         if (move_count_ > 0)
         {
             recommendation = search_next(enemies_copy, friends_copy, -alpha_ - 1, -alpha_);
@@ -827,7 +480,7 @@ namespace
         {
             best_result_.move = move;
             best_result_.score = score;
-#ifdef USE_KH
+#ifndef NO_USE_KILLER
             next_killer_move_ = recommendation.move;
 #endif
         }
@@ -858,7 +511,7 @@ namespace
         best_result_ = InternalMoveRecommendation{InternalMove{}, -big};
         node_type_ = NodeType::All;
 
-#ifdef USE_TT
+#ifndef NO_USE_TT
         // Check the transposition table before checking if the game is over
         // (this works out faster)
         auto const [tt_ptr, was_found] = table.lookup(friends_, enemies_);
@@ -885,7 +538,7 @@ namespace
         }
 #endif
 
-#ifdef USE_KH
+#ifndef NO_USE_KILLER
         if (!killer_move_.empty() && is_move_legal(killer_move_, friends_, enemies_))
         {
             DIAGNOSTICS_PREPARE_KILLER_MOVE();
@@ -917,12 +570,12 @@ namespace
                 auto const to_board = extract_one_bit(move_set.to_board);
                 auto const move = InternalMove{move_set.from_board, to_board};
 
-#ifdef USE_KH
+#ifndef NO_USE_KILLER
                 if (killer_move_ == move)
                     continue;
 #endif
 
-#ifdef USE_TT
+#ifndef NO_USE_TT
                 if (tt_move == move)
                     continue;
 #endif
@@ -940,7 +593,7 @@ namespace
 
     auto Searcher::add_to_transposition_table() -> void
     {
-#ifdef USE_TT
+#ifndef NO_USE_TT
         auto const [tt_ptr, was_found] = table.lookup(friends_, enemies_);
 
         bool const are_we_pv = node_type_ == NodeType::Pv;
@@ -961,7 +614,7 @@ namespace
 
 auto recommend_move(Position const& position) -> MoveRecommendation
 {
-#ifdef USE_TT
+#ifndef NO_USE_TT
     table.reset();
     pv_count = {};
 #endif
@@ -973,17 +626,10 @@ auto recommend_move(Position const& position) -> MoveRecommendation
 
     auto internal = InternalMoveRecommendation{};
 
-#ifdef USE_ID
     for (auto depth = 1; depth <= DEPTH; ++depth)
-#else
-    auto const depth = int{DEPTH};
-#endif
-    {
         internal = Searcher(friends, enemies, depth, -big, big).search();
-    }
 
-#ifdef USE_TT
-
+#ifndef NO_USE_TT
     auto pv = std::vector<Move>{};
 
     auto f = friends;
@@ -1003,6 +649,7 @@ auto recommend_move(Position const& position) -> MoveRecommendation
 
     std::cout << fmt::format("Pv: [{}]\n", fmt::join(pv.begin(), pv.end(), ", "));
 #endif
+
 #ifdef DIAGNOSTICS
     std::cout << diagnostics.to_string() << '\n';
 #endif
