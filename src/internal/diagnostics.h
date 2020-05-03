@@ -139,7 +139,7 @@ Diagnostics diagnostics{};
         {                                                                                          \
             diagnostics.tt_move_is_best.update(*scratchpad_.tt_move_score >= BEST_RESULT.score);   \
         }                                                                                          \
-        diagnostics.num_moves_considered.update(static_cast<u64>(MOVE_COUNT));                     \
+        diagnostics.num_moves_considered.update(MOVE_COUNT);                                       \
     } while (false)
 
 #define DIAGNOSTICS_UPDATE_AFTER_MOVE(TYPE, SCORE)                                                 \

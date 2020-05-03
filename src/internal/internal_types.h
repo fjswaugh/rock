@@ -35,6 +35,14 @@ struct InternalMove
     }
     constexpr auto empty() const -> bool { return from_board == u64{} && to_board == u64{}; }
 
+    static auto from(Move move) -> InternalMove
+    {
+        return InternalMove{
+            move.from.bit_board(),
+            move.to.bit_board(),
+        };
+    }
+
     auto to_standard_move() const -> std::optional<Move>
     {
         if (empty())

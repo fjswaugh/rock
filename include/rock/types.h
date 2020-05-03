@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include <cassert>
+#include <optional>
 
 namespace rock
 {
@@ -167,6 +168,14 @@ enum struct GameOutcome
     WhiteWins,
     BlackWins,
     Draw,
+};
+
+using ScoreType = std::int64_t;
+
+struct MoveRecommendation
+{
+    std::optional<Move> move;
+    ScoreType score;
 };
 
 }  // namespace rock

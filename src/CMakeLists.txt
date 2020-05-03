@@ -2,14 +2,17 @@ add_library(rock
     algorithms.cpp
     parse.cpp
     format.cpp
-    table_generation.h
-    bit_operations.h
     game.cpp
     fen.cpp
     types.cpp
-    transposition_table.h
-    diagnostics.h
-    internal_types.h
+    internal/table_generation.h
+    internal/bit_operations.h
+    internal/transposition_table.h
+    internal/diagnostics.h
+    internal/internal_types.h
+    internal/search.h
+    internal/move_generation.h
+    internal/evaluate.h
     ../include/rock/fen.h
     ../include/rock/game.h
     ../include/rock/algorithms.h

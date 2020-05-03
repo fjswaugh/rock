@@ -1,4 +1,5 @@
 #include "example_boards.h"
+#include "internal/transposition_table.h"
 #include "rock/algorithms.h"
 #include "rock/format.h"
 #include "rock/starting_position.h"
@@ -21,6 +22,30 @@ TEST_CASE("rock::recommend_move_speed_starting_board")
         move_str,
         score,
         ch::duration_cast<ch::milliseconds>(t_end - t_begin).count());
+}
+
+TEST_CASE("rock::tt_initialize")
+{
+    {
+        auto const t_begin = Clock::now();
+        volatile auto table = rock::internal::TranspositionTable{};
+        auto const t_end = Clock::now();
+
+        fmt::print(
+            "Initialize transposition table [duration = {}ms]\n",
+            ch::duration_cast<ch::milliseconds>(t_end - t_begin).count());
+    }
+
+    {
+        auto table = rock::internal::TranspositionTable{};
+        auto const t_begin = Clock::now();
+        table.reset();
+        auto const t_end = Clock::now();
+
+        fmt::print(
+            "Reset transposition table [duration = {}ms]\n",
+            ch::duration_cast<ch::milliseconds>(t_end - t_begin).count());
+    }
 }
 
 TEST_CASE("rock::recommend_move_speed_boards")

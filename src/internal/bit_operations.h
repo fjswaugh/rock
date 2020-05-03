@@ -3,7 +3,7 @@
 #include "rock/types.h"
 #include <limits>
 
-namespace rock
+namespace rock::internal
 {
 
 [[maybe_unused]] inline auto pop_count_manual(u64 x) -> u64

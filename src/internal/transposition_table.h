@@ -2,16 +2,18 @@
 
 #include "diagnostics.h"
 #include "internal_types.h"
-#include "rock/algorithms.h"
 #include "rock/types.h"
-#include <absl/container/flat_hash_map.h>
 #include <absl/hash/hash.h>
+
+#ifdef NO_USE_CUSTOM_TT
+#include <absl/container/flat_hash_map.h>
+#endif
 
 namespace rock::internal
 {
 
 #ifndef NO_USE_CUSTOM_TT
-auto compute_hash(u64 friends, u64 enemies) -> std::size_t
+inline auto compute_hash(u64 friends, u64 enemies) -> std::size_t
 {
     auto const key = std::tuple{friends, enemies};
     return absl::Hash<decltype(key)>{}(key);

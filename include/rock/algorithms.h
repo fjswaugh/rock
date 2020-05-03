@@ -1,7 +1,6 @@
 #pragma once
 
 #include "types.h"
-#include <optional>
 #include <vector>
 
 namespace rock
@@ -12,20 +11,11 @@ auto apply_move(Move, Position) -> Position;
 
 auto list_moves(Position const&) -> std::vector<Move>;
 auto count_moves(Position const&, int level = 1) -> std::size_t;
-auto is_legal_move(Move, Position const&) -> bool;
+auto is_move_legal(Move, Position const&) -> bool;
 auto list_legal_destinations(BoardCoordinates from, Position const&)
     -> std::vector<BoardCoordinates>;
 
-auto are_pieces_all_together(BitBoard) -> bool;
 auto get_game_outcome(Position const&) -> GameOutcome;
-
-using ScoreType = std::int64_t;
-
-struct MoveRecommendation
-{
-    std::optional<Move> move;
-    ScoreType score;
-};
 
 /**
  * Positive result is good for the player making the move

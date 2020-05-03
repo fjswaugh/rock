@@ -57,14 +57,14 @@ auto Game::make_move(Move move) -> bool
 {
     assert(!history_.empty());
 
-    if (!rock::is_legal_move(move, current_position()))
+    if (!is_move_legal(move, current_position()))
         return false;
 
     history_.erase(history_.begin() + static_cast<std::ptrdiff_t>(i_) + 1, history_.end());
     moves_.erase(moves_.begin() + static_cast<std::ptrdiff_t>(i_), moves_.end());
 
     moves_.push_back(move);
-    history_.push_back(rock::apply_move(move, current_position()));
+    history_.push_back(apply_move(move, current_position()));
     ++i_;
 
     return true;
