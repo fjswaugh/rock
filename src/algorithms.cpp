@@ -8,7 +8,6 @@
 #include <iostream>
 #include <random>
 
-#define USE_NEW
 #define USE_TT
 #define USE_CUSTOM_TT
 #define USE_ID
@@ -524,6 +523,75 @@ namespace
     Diagnostics diagnostics{};
 #endif
 
+#ifdef DIAGNOSTICS
+#define DIAGNOSTICS_UPDATE(FIELD, VALUE) diagnostics.FIELD.update(VALUE)
+#define DIAGNOSTICS_PREPARE_KILLER_MOVE() scratchpad_.processing_killer_move = true
+#define DIAGNOSTICS_PREPARE_TT_MOVE() scratchpad_.processing_tt_move = true
+
+#ifdef USE_KH
+#define DIAGNOSTICS_UPDATE_BEFORE_SEARCH()                                                         \
+    do                                                                                             \
+    {                                                                                              \
+        diagnostics.killer_move_exists.update(!killer_move_.empty());                              \
+        if (!killer_move_.empty())                                                                 \
+            diagnostics.killer_move_is_legal.update(                                               \
+                is_move_legal(killer_move_, friends_, enemies_));                                  \
+    } while (false)
+#else
+#define DIAGNOSTICS_UPDATE_BEFORE_SEARCH()
+#endif
+
+#define DIAGNOSTICS_UPDATE_AFTER_SEARCH()                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        if (scratchpad_.first_move_score)                                                          \
+        {                                                                                          \
+            diagnostics.first_move_is_best.update(                                                 \
+                *scratchpad_.first_move_score >= best_result_.score);                              \
+        }                                                                                          \
+        if (scratchpad_.killer_move_score)                                                         \
+        {                                                                                          \
+            diagnostics.killer_move_is_best.update(                                                \
+                *scratchpad_.killer_move_score >= best_result_.score);                             \
+        }                                                                                          \
+        if (scratchpad_.tt_move_score)                                                             \
+        {                                                                                          \
+            diagnostics.tt_move_is_best.update(*scratchpad_.tt_move_score >= best_result_.score);  \
+        }                                                                                          \
+        diagnostics.num_moves_considered.update(static_cast<u64>(move_count_));                    \
+    } while (false)
+
+#define DIAGNOSTICS_UPDATE_AFTER_MOVE(TYPE, SCORE)                                                 \
+    do                                                                                             \
+    {                                                                                              \
+        if (move_count_ == 0)                                                                      \
+        {                                                                                          \
+            diagnostics.first_move_makes_cut.update(TYPE == NodeType::Cut);                        \
+            scratchpad_.first_move_score = SCORE;                                                  \
+        }                                                                                          \
+        if (scratchpad_.processing_tt_move)                                                        \
+        {                                                                                          \
+            diagnostics.tt_move_makes_cut.update(TYPE == NodeType::Cut);                           \
+            scratchpad_.tt_move_score = SCORE;                                                     \
+            scratchpad_.processing_tt_move = false;                                                \
+        }                                                                                          \
+        if (scratchpad_.processing_killer_move)                                                    \
+        {                                                                                          \
+            diagnostics.killer_move_makes_cut.update(TYPE == NodeType::Cut);                       \
+            scratchpad_.killer_move_score = SCORE;                                                 \
+            scratchpad_.processing_killer_move = false;                                            \
+        }                                                                                          \
+    } while (false)
+
+#else
+#define DIAGNOSTICS_UPDATE(FIELD, VALUE)
+#define DIAGNOSTICS_PREPARE_KILLER_MOVE()
+#define DIAGNOSTICS_PREPARE_TT_MOVE()
+#define DIAGNOSTICS_UPDATE_BEFORE_SEARCH()
+#define DIAGNOSTICS_UPDATE_AFTER_SEARCH()
+#define DIAGNOSTICS_UPDATE_AFTER_MOVE(TYPE, SCORE)
+#endif
+
 #ifdef USE_TT
 #ifdef USE_CUSTOM_TT
     auto compute_hash(u64 friends, u64 enemies) -> std::size_t
@@ -650,9 +718,7 @@ namespace
             -> InternalMoveRecommendation;
         auto main_search() -> void;
         auto process_move(InternalMove) -> void;
-#ifdef USE_TT
         auto add_to_transposition_table() -> void;
-#endif
 
         // Input arguments
         BitBoard friends_;
@@ -719,27 +785,8 @@ namespace
         else
         {
             main_search();
+            DIAGNOSTICS_UPDATE_AFTER_SEARCH();
             add_to_transposition_table();
-
-#ifdef DIAGNOSTICS
-            if (scratchpad_.first_move_score)
-            {
-                diagnostics.first_move_is_best.update(
-                    *scratchpad_.first_move_score >= best_result_.score);
-            }
-            if (scratchpad_.killer_move_score)
-            {
-                diagnostics.killer_move_is_best.update(
-                    *scratchpad_.killer_move_score >= best_result_.score);
-            }
-            if (scratchpad_.tt_move_score)
-            {
-                diagnostics.tt_move_is_best.update(
-                    *scratchpad_.tt_move_score >= best_result_.score);
-            }
-            diagnostics.num_moves_considered.update(move_count_);
-#endif
-
             return best_result_;
         }
     }
@@ -767,9 +814,7 @@ namespace
                 score = -recommendation.score;
             }
 
-#ifdef DIAGNOSTICS
-            diagnostics.negascout_re_search.update(must_re_search);
-#endif
+            DIAGNOSTICS_UPDATE(negascout_re_search, must_re_search);
         }
         else
 #endif
@@ -801,41 +846,14 @@ namespace
             node_type_ = NodeType::Cut;
         }
 
-#ifdef DIAGNOSTICS
-        if (move_count_ == 0)
-        {
-            diagnostics.first_move_makes_cut.update(node_type_ == NodeType::Cut);
-            scratchpad_.first_move_score = score;
-        }
-        if (scratchpad_.processing_tt_move)
-        {
-            diagnostics.tt_move_makes_cut.update(node_type_==NodeType::Cut);
-            scratchpad_.tt_move_score = score;
-            scratchpad_.processing_tt_move = false;
-        }
-        if (scratchpad_.processing_killer_move)
-        {
-            diagnostics.killer_move_makes_cut.update(node_type_==NodeType::Cut);
-            scratchpad_.killer_move_score = score;
-            scratchpad_.processing_killer_move = false;
-        }
-#endif
+        DIAGNOSTICS_UPDATE_AFTER_MOVE(node_type_, score);
 
         ++move_count_;
     }
 
     auto Searcher::main_search() -> void
     {
-#ifdef USE_KH
-#ifdef DIAGNOSTICS
-        diagnostics.killer_move_exists.update(!killer_move_.empty());
-        if (!killer_move_.empty())
-        {
-            diagnostics.killer_move_is_legal.update(
-                is_move_legal(killer_move_, friends_, enemies_));
-        }
-#endif
-#endif
+        DIAGNOSTICS_UPDATE_BEFORE_SEARCH();
 
         best_result_ = InternalMoveRecommendation{InternalMove{}, -big};
         node_type_ = NodeType::All;
@@ -845,42 +863,22 @@ namespace
         // (this works out faster)
         auto const [tt_ptr, was_found] = table.lookup(friends_, enemies_);
         auto tt_move = InternalMove{};
-#ifdef DIAGNOSTICS
-        diagnostics.tt_had_move_cached.update(was_found);
-#endif
+        DIAGNOSTICS_UPDATE(tt_had_move_cached, was_found);
         if (was_found)
         {
-            // Note: don't just return a previous result, even one from a higher
-            // depth!
-            //
-            // The beta cutoff might have been lower for this version of the
-            // result, which means the score might not be enough to trigger a
-            // parent's beta cutoff where it may be if we let the search
-            // continue.
-            //
-            // I'm not sure about this analysis, but certainly I saw
-            // performance degradation if I just returned from here when I
-            // found a match from a higher depth search.
-            //
-            // If the node was a pv node however, it is safe to return straight
-            // away. This doesn't seem to produce much advantage, but might make
-            // a difference in some cases.
             tt_move = tt_ptr->recommendation.move;
 
-            bool const tt_is_exact_match =
-                (tt_ptr->type == NodeType::Pv && tt_ptr->depth >= depth_) || (tt_move.empty());
-#ifdef DIAGNOSTICS
-            diagnostics.tt_move_is_exact_match.update(tt_is_exact_match);
-#endif
+            bool const tt_is_exact_match = tt_move.empty() ||
+                (tt_ptr->type == NodeType::Pv && tt_ptr->depth >= depth_);
+
+            DIAGNOSTICS_UPDATE(tt_move_is_exact_match, tt_is_exact_match);
             if (tt_is_exact_match)
             {
                 best_result_ = tt_ptr->recommendation;
                 return;
             }
 
-#ifdef DIAGNOSTICS
-            scratchpad_.processing_tt_move = true;
-#endif
+            DIAGNOSTICS_PREPARE_TT_MOVE();
             this->process_move(tt_move);
             if (node_type_ == NodeType::Cut)
                 return;
@@ -890,9 +888,7 @@ namespace
 #ifdef USE_KH
         if (!killer_move_.empty() && is_move_legal(killer_move_, friends_, enemies_))
         {
-#ifdef DIAGNOSTICS
-            scratchpad_.processing_killer_move = true;
-#endif
+            DIAGNOSTICS_PREPARE_KILLER_MOVE();
             this->process_move(killer_move_);
             if (node_type_ == NodeType::Cut)
                 return;
@@ -942,9 +938,9 @@ namespace
         // version of alpha-beta pruning.
     }
 
-#ifdef USE_TT
     auto Searcher::add_to_transposition_table() -> void
     {
+#ifdef USE_TT
         auto const [tt_ptr, was_found] = table.lookup(friends_, enemies_);
 
         bool const are_we_pv = node_type_ == NodeType::Pv;
@@ -958,8 +954,8 @@ namespace
             tt_ptr->depth = depth_;
             tt_ptr->type = node_type_;
         }
-    }
 #endif
+    }
 
 }  // namespace
 
@@ -983,11 +979,7 @@ auto recommend_move(Position const& position) -> MoveRecommendation
     auto const depth = int{DEPTH};
 #endif
     {
-#ifdef USE_NEW
         internal = Searcher(friends, enemies, depth, -big, big).search();
-#else
-        internal = recommend_move_search(friends, enemies, depth, -big, big);
-#endif
     }
 
 #ifdef USE_TT
