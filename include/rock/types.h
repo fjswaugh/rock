@@ -132,6 +132,9 @@ struct Position
         : board_{board}, player_to_move_{player_to_move}
     {}
 
+    constexpr auto friends() const -> BitBoard { return board_[player_to_move_]; }
+    constexpr auto enemies() const -> BitBoard { return board_[!player_to_move_]; }
+
     constexpr auto board() const -> Board const& { return board_; }
     constexpr auto player_to_move() const -> Player { return player_to_move_; }
 

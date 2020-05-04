@@ -20,7 +20,7 @@ auto get_game_outcome(Position const&) -> GameOutcome;
 /**
  * Positive result is good for the player making the move
  */
-auto recommend_move(Position const&) -> MoveRecommendation;
+auto recommend_move(Position const&, int difficulty = 10) -> MoveRecommendation;
 auto evaluate_position(Position const&) -> ScoreType;
 
 /**
