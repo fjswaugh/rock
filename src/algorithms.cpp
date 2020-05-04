@@ -2,8 +2,6 @@
 //#define DIAGNOSTICS
 //#define NO_USE_CUSTOM_TT
 
-#define DEPTH 8
-
 #include "rock/algorithms.h"
 #include "internal/bit_operations.h"
 #include "internal/diagnostics.h"
@@ -176,6 +174,28 @@ namespace
             return std::nullopt;
         }
     }
+
+    [[maybe_unused]] auto extract_pv_line(TranspositionTable& table, Position p)
+        -> std::vector<Move>
+    {
+        auto moves = std::vector<Move>{};
+
+        while (true)
+        {
+            auto const [value, was_found] = table.lookup(p.friends(), p.enemies());
+            if (!was_found || value->type != NodeType::Pv)
+                break;
+
+            auto const move = value->recommendation.move.to_standard_move();
+
+            if (!move.has_value())
+                break;
+            moves.push_back(*move);
+            p = apply_move(*move, p);
+        }
+
+        return moves;
+    }
 }  // namespace
 
 static auto table = TranspositionTable{};
@@ -231,24 +251,10 @@ auto recommend_move(Position const& position, int difficulty) -> MoveRecommendat
     }
 
 #ifdef DIAGNOSTICS
-    auto pv = std::vector<Move>{};
-
-    auto f = friends;
-    auto e = enemies;
-    while (true)
     {
-        auto const [value, was_found] = table.lookup(f, e);
-        if (!was_found || value->type != NodeType::Pv)
-            break;
-        auto const& m = value->recommendation.move;
-        if (m.empty())
-            break;
-        pv.push_back(m.to_standard_move().value());
-        apply_move_low_level(m.from_board, m.to_board, &f, &e);
-        std::swap(f, e);
+        auto pv = extract_pv_line(table, position.friends(), position.enemies());
+        std::cout << fmt::format("Pv: [{}]\n", fmt::join(pv.begin(), pv.end(), ", "));
     }
-
-    std::cout << fmt::format("Pv: [{}]\n", fmt::join(pv.begin(), pv.end(), ", "));
 #endif
 
 #ifdef DIAGNOSTICS
