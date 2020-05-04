@@ -2,8 +2,6 @@
 //#define DIAGNOSTICS
 //#define NO_USE_CUSTOM_TT
 
-#define DEPTH 8
-
 #include "rock/algorithms.h"
 #include "internal/bit_operations.h"
 #include "internal/diagnostics.h"
@@ -119,48 +117,151 @@ auto get_game_outcome(Position const& position) -> GameOutcome
     return GameOutcome::Ongoing;
 }
 
-static auto table = TranspositionTable{};
+namespace
+{
+    auto depth_from_difficulty(int difficulty) -> int
+    {
+        assert(difficulty >= 0);
+        switch (difficulty)
+        {
+        case 0:
+        case 1:
+            return 1;
+        case 2:
+            return 2;
+        case 3:
+        case 4:
+        case 5:
+            return 3;
+        case 6:
+        case 7:
+            return 4;
+        case 8:
+            return 5;
+        case 9:
+            return 6;
+        default:
+            return 6 + difficulty - 10;
+        }
+    }
 
-auto recommend_move(Position const& position) -> MoveRecommendation
+    auto randomness_from_difficulty(int difficulty) -> std::optional<double>
+    {
+        assert(difficulty >= 0);
+        switch (difficulty)
+        {
+        case 0:
+            return 0.0;
+        case 1:
+            return 0.2;
+        case 2:
+            return 0.4;
+        case 3:
+            return 0.6;
+        case 4:
+            return 0.8;
+        case 5:
+            return 1.0;
+        case 6:
+            return 1.5;
+        case 7:
+            return 3.0;
+        case 8:
+            return 4.5;
+        case 9:
+            return 8.0;
+        default:
+            return std::nullopt;
+        }
+    }
+
+    [[maybe_unused]] auto extract_pv_line(TranspositionTable& table, Position p)
+        -> std::vector<Move>
+    {
+        auto moves = std::vector<Move>{};
+
+        while (true)
+        {
+            auto const [value, was_found] = table.lookup(p.friends(), p.enemies());
+            if (!was_found || value->type != NodeType::Pv)
+                break;
+
+            auto const move = value->recommendation.move.to_standard_move();
+
+            if (!move.has_value())
+                break;
+            moves.push_back(*move);
+            p = apply_move(*move, p);
+        }
+
+        return moves;
+    }
+}  // namespace
+
+static auto table = TranspositionTable{};
+static auto rng = std::minstd_rand{100};
+
+auto recommend_move(Position const& position, int difficulty) -> MoveRecommendation
 {
     table.reset();
 #ifdef DIAGNOSTICS
     diagnostics = {};
 #endif
-    auto const friends = position.board()[position.player_to_move()];
-    auto const enemies = position.board()[!position.player_to_move()];
 
-    auto internal = InternalMoveRecommendation{};
+    auto result = MoveRecommendation{};
 
-    for (auto depth = 1; depth <= DEPTH; ++depth)
-        internal = Searcher(friends, enemies, depth, -big, big, &table).search();
+    auto const max_depth = depth_from_difficulty(difficulty);
+    auto const randomness = randomness_from_difficulty(difficulty);
 
-#ifdef DIAGNOSTICS
-    auto pv = std::vector<Move>{};
-
-    auto f = friends;
-    auto e = enemies;
-    while (true)
+    if (!randomness)
     {
-        auto const [value, was_found] = table.lookup(f, e);
-        if (!was_found || value->type != NodeType::Pv)
-            break;
-        auto const& m = value->recommendation.move;
-        if (m.empty())
-            break;
-        pv.push_back(m.to_standard_move().value());
-        apply_move_low_level(m.from_board, m.to_board, &f, &e);
-        std::swap(f, e);
+        auto internal = InternalMoveRecommendation{};
+        for (auto depth = 1; depth <= max_depth; ++depth)
+        {
+            auto searcher = Searcher(position.friends(), position.enemies(), depth, &table);
+            internal = searcher.search();
+        }
+        result = internal.to_standard_move_recommendation();
+    }
+    else
+    {
+        auto results = std::vector<MoveRecommendation>{};
+
+        for (auto move : list_moves(position))
+        {
+            auto const new_pos = apply_move(move, position);
+
+            auto internal = InternalMoveRecommendation{};
+            for (auto depth = 0; depth <= max_depth - 1; ++depth)
+            {
+                auto searcher = Searcher(new_pos.friends(), new_pos.enemies(), depth, &table);
+                internal = searcher.search();
+            }
+
+            results.push_back({move, -internal.score});
+        }
+
+        auto weights = std::vector<double>(results.size());
+        auto get_weight = [&](auto const& r) { return std::exp(*randomness * 0.1 * r.score); };
+        std::transform(results.begin(), results.end(), weights.begin(), get_weight);
+
+        auto dist = std::discrete_distribution<std::size_t>(weights.begin(), weights.end());
+        auto const index = dist(rng);
+        result = results[index];
     }
 
-    std::cout << fmt::format("Pv: [{}]\n", fmt::join(pv.begin(), pv.end(), ", "));
+#ifdef DIAGNOSTICS
+    {
+        auto pv = extract_pv_line(table, position.friends(), position.enemies());
+        std::cout << fmt::format("Pv: [{}]\n", fmt::join(pv.begin(), pv.end(), ", "));
+    }
 #endif
 
 #ifdef DIAGNOSTICS
     std::cout << diagnostics.to_string() << '\n';
 #endif
 
-    return internal.to_standard_move_recommendation();
+    return result;
 }
 
 auto evaluate_position(Position const& position) -> ScoreType

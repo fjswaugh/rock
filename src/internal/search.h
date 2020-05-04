@@ -13,9 +13,9 @@ struct Searcher
         BitBoard friends,
         BitBoard enemies,
         int depth,
-        ScoreType alpha,
-        ScoreType beta,
         TranspositionTable* table,
+        ScoreType alpha = -big,
+        ScoreType beta = big,
         InternalMove killer_move = {})
         : friends_{friends},
           enemies_{enemies},
@@ -56,10 +56,11 @@ private:
 #endif
 };
 
-inline auto Searcher::search_next(BitBoard friends, BitBoard enemies, ScoreType alpha, ScoreType beta)
+inline auto
+Searcher::search_next(BitBoard friends, BitBoard enemies, ScoreType alpha, ScoreType beta)
     -> InternalMoveRecommendation
 {
-    auto searcher = Searcher(friends, enemies, depth_ - 1, alpha, beta, table_, next_killer_move_);
+    auto searcher = Searcher(friends, enemies, depth_ - 1, table_, alpha, beta, next_killer_move_);
     return searcher.search();
 }
 
