@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 
 project(rock
-    VERSION 0.0.0
+    VERSION 0.0.1
     DESCRIPTION "Romanian checkers AI"
     LANGUAGES CXX)
 
