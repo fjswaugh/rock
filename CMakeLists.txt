@@ -1,33 +1,56 @@
-cmake_minimum_required(VERSION 3.11)
+cmake_minimum_required(VERSION 3.14)
 
 project(rock
-    VERSION 0.0.0
+    VERSION 0.0.1
     DESCRIPTION "Romanian checkers AI"
     LANGUAGES CXX)
 
-set(CMAKE_EXPORT_COMPILE_COMMANDS "ON")
-
+set(MASTER_PROJECT OFF)
 if (CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+    set(MASTER_PROJECT ON)
     set(CMAKE_CXX_EXTENSIONS OFF)
     set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+    set(CMAKE_EXPORT_COMPILE_COMMANDS "ON")
+endif ()
+
+option(ROCK_TEST                    "Generate tests"                                ${MASTER_PROJECT})
+option(ROCK_RECOMMENDED_RELEASE_OPT "Use recommended optimization flags in Release" ON)
+option(ROCK_ARCHITECTURE_OPT        "Use architecture-specific optimizations"       OFF)
+
+# Set these for Abseil
+set(CMAKE_CXX_STANDARD 17)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+
+####################################################################################################
+# Compiler flags to be appended to target
+####################################################################################################
+
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    string(REGEX REPLACE "/W[0-9]" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    set(ROCK_COMMON_FLAGS /W4)
+else ()
+    set(ROCK_COMMON_FLAGS -Wall -Wextra)
+    if (ROCK_RECOMMENDED_RELEASE_OPT)
+        set(ROCK_RELEASE_FLAGS ${ROCK_RELEASE_FLAGS} -O3)
+    endif ()
+    if (ROCK_ARCHITECTURE_OPT)
+        set(ROCK_RELEASE_FLAGS ${ROCK_RELEASE_FLAGS} -march=native)
+    endif ()
+endif ()
+
+# Add no-semantic-interposition to gcc otherwise rock will be very slow when
+# built as a shared library
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    if (ROCK_RECOMMENDED_RELEASE_OPT)
+        set(ROCK_RELEASE_FLAGS ${ROCK_RELEASE_FLAGS} -fno-semantic-interposition)
+    endif()
 endif()
+
+####################################################################################################
+# Dependencies
+####################################################################################################
 
 include(FetchContent)
-
-if (${CMAKE_VERSION} VERSION_LESS 3.14)
-    macro(FetchContent_MakeAvailable NAME)
-        FetchContent_GetProperties(${NAME})
-        if(NOT ${NAME}_POPULATED)
-            FetchContent_Populate(${NAME})
-            add_subdirectory(${${NAME}_SOURCE_DIR} ${${NAME}_BINARY_DIR})
-        endif()
-    endmacro()
-endif()
-
-# TODO
-# For now, we set this to true so that the fmt library works with pybind11
-# Unclear on the reasons, but will investigate further
-set(BUILD_SHARED_LIBS TRUE)
 
 FetchContent_Declare(
     fmtlib
@@ -36,13 +59,25 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(fmtlib)
 
 FetchContent_Declare(
-    pybind11
-    GIT_REPOSITORY https://github.com/pybind/pybind11.git
-    GIT_TAG        v2.4.3)
-FetchContent_MakeAvailable(pybind11)
+    doctest
+    GIT_REPOSITORY https://github.com/onqtam/doctest.git
+    GIT_TAG        2.3.7)
+FetchContent_MakeAvailable(doctest)
+
+FetchContent_Declare(
+    abseil
+    GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
+    GIT_TAG        20200225.2)
+FetchContent_MakeAvailable(abseil)
+
+####################################################################################################
+# Subdirectories
+####################################################################################################
 
 add_subdirectory(src)
-add_subdirectory(apps)
 
-# include(CTest)
-# add_subdirectory(test)
+if (ROCK_TEST)
+    include(CTest)
+    enable_testing()
+    add_subdirectory(test)
+endif()

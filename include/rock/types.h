@@ -2,141 +2,190 @@
 
 #include "common.h"
 #include <cassert>
+#include <optional>
+#include <vector>
 
 namespace rock
 {
 
-enum struct Color : bool
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Player
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+enum struct Player : bool
 {
     White,
     Black,
 };
 
+constexpr auto opponent_of(Player p) -> Player
+{
+    return Player{!static_cast<bool>(p)};
+}
+
+constexpr auto operator!(Player p) -> Player
+{
+    return opponent_of(p);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Board
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 struct BitBoard;
 
-struct BoardPosition
+struct BoardCoordinates
 {
-    static constexpr auto min() -> BoardPosition { return BoardPosition{}; }
-    static constexpr auto max() -> BoardPosition { return BoardPosition{63}; }
+    using underlying_type = u8;
 
-    constexpr BoardPosition() = default;
+    constexpr BoardCoordinates() = default;
+
     template <typename T>
-    constexpr BoardPosition(T data) : data_{static_cast<u8>(data)}
+    explicit constexpr BoardCoordinates(T data) : data_{static_cast<underlying_type>(data)}
     {
 #ifndef NDEBUG
-        if (data >= static_cast<T>(64))
-            throw "Out of bounds in BoardPosition";
+        if (data_ >= underlying_type{64})
+            throw "Out of bounds in BoardCoordinates";
 #endif
     }
+
     template <typename T>
-    constexpr BoardPosition(T x, T y) : BoardPosition{static_cast<u8>(y * 8 + x)}
+    constexpr BoardCoordinates(T x, T y) : BoardCoordinates{static_cast<underlying_type>(y * 8 + x)}
     {}
 
-    constexpr auto data() const -> u8 { return data_; }
-    explicit constexpr operator u8() const { return data_; };
+    constexpr auto data() const -> underlying_type { return data_; }
+    explicit constexpr operator underlying_type() const { return data_; }
 
-    constexpr auto x() const -> int { return data_ % 8; }
-    constexpr auto y() const -> int { return data_ / 8; }
+    constexpr auto x() const -> int { return static_cast<int>(data_) % 8; }
+    constexpr auto y() const -> int { return static_cast<int>(data_) / 8; }
 
-    constexpr auto board() const -> BitBoard;
+    constexpr auto bit_board() const -> BitBoard;
 
-    friend constexpr auto operator<(BoardPosition p1, BoardPosition p2) -> bool
+    friend constexpr auto operator<(BoardCoordinates p1, BoardCoordinates p2) -> bool
     {
         return p1.data_ < p2.data_;
     }
-    friend constexpr auto operator<=(BoardPosition p1, BoardPosition p2) -> bool
+    friend constexpr auto operator<=(BoardCoordinates p1, BoardCoordinates p2) -> bool
     {
         return p1.data_ <= p2.data_;
     }
-    friend constexpr auto operator==(BoardPosition p1, BoardPosition p2) -> bool
+    friend constexpr auto operator==(BoardCoordinates p1, BoardCoordinates p2) -> bool
     {
         return p1.data_ == p2.data_;
     }
-    friend constexpr auto operator!=(BoardPosition p1, BoardPosition p2) -> bool
+    friend constexpr auto operator!=(BoardCoordinates p1, BoardCoordinates p2) -> bool
     {
         return p1.data_ != p2.data_;
     }
-    friend constexpr auto operator++(BoardPosition& p) -> BoardPosition&
-    {
-        ++p.data_;
-        return p;
-    }
-    friend constexpr auto operator++(BoardPosition& p, int) -> BoardPosition
-    {
-        auto const res = p;
-        ++p.data_;
-        return res;
-    }
 
 private:
-    u8 data_{};
+    underlying_type data_{};
 };
 
 struct BitBoard
 {
     constexpr BitBoard() = default;
-    constexpr BitBoard(u64 data) : data_{data} {}
+    constexpr BitBoard(u64 data) : data{data} {}
+    constexpr operator u64() const { return data; }
+    constexpr operator u64&() { return data; }
 
-    constexpr auto data() const -> u64 { return data_; }
-    constexpr operator u64() const { return data_; }
+    constexpr auto at(BoardCoordinates c) const -> bool { return data & c.bit_board(); }
 
-    constexpr auto at(BoardPosition pos) const -> bool { return data_ & pos.board().data(); }
+    constexpr auto set_bit(BoardCoordinates c) -> void { data |= c.bit_board(); }
+    constexpr auto flip_bit(BoardCoordinates c) -> void { data ^= c.bit_board(); }
+    constexpr auto clear_bit(BoardCoordinates c) -> void { data &= ~c.bit_board(); }
 
-    constexpr auto set_bit(BoardPosition pos) -> void { data_ |= pos.board().data(); }
-    constexpr auto flip_bit(BoardPosition pos) -> void { data_ ^= pos.board().data(); }
-    constexpr auto clear_bit(BoardPosition pos) -> void { data_ &= (~pos.board().data()); }
+    auto extract_one() -> BitBoard;
+    auto count() const -> std::size_t;
+    auto coordinates() const -> BoardCoordinates;
 
-private:
-    u64 data_{};
+    u64 data{};
 };
 
-constexpr auto BoardPosition::board() const -> BitBoard
+constexpr auto BoardCoordinates::bit_board() const -> BitBoard
 {
     return BitBoard{u64{1} << u64{data_}};
 }
 
 struct Board
 {
-    u64 pieces[2];
+    constexpr Board() = default;
+    constexpr Board(BitBoard white, BitBoard black) : boards_{white, black} {}
+
+    constexpr auto pieces_for(Player p) -> BitBoard& { return boards_[static_cast<bool>(p)]; }
+    constexpr auto operator[](Player p) -> BitBoard& { return boards_[static_cast<bool>(p)]; }
+
+    constexpr auto pieces_for(Player p) const -> BitBoard { return boards_[static_cast<bool>(p)]; }
+    constexpr auto operator[](Player p) const -> BitBoard { return boards_[static_cast<bool>(p)]; }
+
+private:
+    BitBoard boards_[2];
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Position
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+struct Position
+{
+    constexpr Position() = default;
+    constexpr Position(Board const& board, Player player_to_move)
+        : board_{board}, player_to_move_{player_to_move}
+    {}
+
+    constexpr auto friends() const -> BitBoard { return board_[player_to_move_]; }
+    constexpr auto enemies() const -> BitBoard { return board_[!player_to_move_]; }
+
+    constexpr auto board() const -> Board const& { return board_; }
+    constexpr auto player_to_move() const -> Player { return player_to_move_; }
+
+    constexpr auto set_board(Board const& b) -> void { board_ = b; }
+    constexpr auto set_player_to_move(Player p) -> void { player_to_move_ = p; }
+
+private:
+    Board board_{};
+    Player player_to_move_{};
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Move
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct Move
 {
-    u8 from;
-    u8 to;
-};
+    BoardCoordinates from;
+    BoardCoordinates to;
 
-struct MoveList
-{
-    constexpr void push_back(Move move)
+    constexpr auto friend operator==(Move m1, Move m2) -> bool
     {
-        assert(size_ != 12 * 8);
-        moves_[size_++] = move;
+        return m1.from == m2.from && m1.to == m2.to;
     }
-    constexpr auto begin() const { return &moves_[0]; }
-    constexpr auto end() const { return this->begin() + size_; }
-    constexpr auto size() const { return size_; }
 
-    constexpr Move& operator[](std::size_t i) { return moves_[i]; }
-    constexpr Move operator[](std::size_t i) const { return moves_[i]; }
-
-private:
-    constexpr static auto max_size = 12 * 8;
-
-    Move moves_[max_size];
-    std::size_t size_{};
+    constexpr auto friend operator<(Move m1, Move m2) -> bool
+    {
+        return (m1.from == m2.from) ? (m1.to < m2.to) : (m1.from < m2.from);
+    }
 };
 
-constexpr auto apply_move(Move const m, Board b, Color const player) -> Board
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// GameOutcome
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+enum struct GameOutcome
 {
-    // TODO: tidy up
-    auto const from = BoardPosition{m.from}.board().data();
-    auto const to = BoardPosition{m.to}.board().data();
+    Ongoing = 0,
+    WhiteWins,
+    BlackWins,
+    Draw,
+};
 
-    b.pieces[bool(player)] ^= (from | to);
-    b.pieces[!bool(player)] &= ~to;
+using ScoreType = std::int64_t;
 
-    return b;
-}
+struct PositionAnalysis
+{
+    std::optional<Move> best_move;
+    std::vector<Move> principal_variation;
+    ScoreType score;
+};
 
 }  // namespace rock
