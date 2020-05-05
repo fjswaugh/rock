@@ -1,6 +1,5 @@
 //#define NO_USE_NEGASCOUT
 //#define DIAGNOSTICS
-//#define NO_USE_CUSTOM_TT
 
 #include "rock/algorithms.h"
 #include "internal/bit_operations.h"
@@ -24,10 +23,6 @@
 //     - No longer needs to be compact (may perform better if not)
 // - Should probably work out some performance regression testing
 // - Consider better algorithm for detemining if game is over
-//   - This check is probably done too many times in the search code
-// - Create some kind of stateful AI object to remember information
-// - Create some kind of analysis of what is going on in the search tree
-// - Create interface to take advantage of iterative deepening
 
 namespace rock
 {
@@ -117,6 +112,61 @@ auto get_game_outcome(Position const& position) -> GameOutcome
     return GameOutcome::Ongoing;
 }
 
+auto analyze_position(Position const& position, int max_depth) -> PositionAnalysis
+{
+    static auto table = TranspositionTable(18);
+
+    table.reset();
+
+    auto recommendation = InternalMoveRecommendation{};
+    for (auto depth = 1; depth <= max_depth; ++depth)
+    {
+        auto searcher = Searcher(depth, &table);
+        recommendation = searcher.search(position.friends(), position.enemies());
+    }
+    return make_analysis(position, recommendation, table);
+}
+
+auto analyze_available_moves(Position const& position, int max_depth)
+    -> std::map<Move, PositionAnalysis>
+{
+    auto result = std::map<Move, PositionAnalysis>{};
+
+    for (auto const move : list_moves(position))
+    {
+        auto const new_position = apply_move(move, position);
+        result[move] = analyze_position(new_position, max_depth - 1);
+    }
+
+    return result;
+}
+
+auto select_analysis_with_softmax(
+    std::map<Move, PositionAnalysis> const& moves, double softmax_parameter) -> PositionAnalysis
+{
+    static auto rng = std::ranlux24{std::random_device{}()};
+
+    // Weight each move according to its score and the softmax function
+    auto weights = std::vector<double>(moves.size());
+    auto get_weight = [&](std::pair<Move, PositionAnalysis> const& move) {
+        return std::exp(softmax_parameter * 0.1 * move.second.score);
+    };
+    std::transform(moves.begin(), moves.end(), weights.begin(), get_weight);
+
+    // Pick an index based on the weight
+    auto dist = std::discrete_distribution<std::size_t>(weights.begin(), weights.end());
+    auto const index = dist(rng);
+
+    // Select the move
+    auto it = std::next(moves.begin(), static_cast<std::ptrdiff_t>(index));
+
+    // And construct the analysis
+    auto [selected_move, analysis] = *it;
+    analysis.best_move = selected_move;
+    analysis.principal_variation.insert(analysis.principal_variation.begin(), selected_move);
+    return analysis;
+}
+
 namespace
 {
     auto depth_from_difficulty(int difficulty) -> int
@@ -145,7 +195,7 @@ namespace
         }
     }
 
-    auto randomness_from_difficulty(int difficulty) -> std::optional<double>
+    auto softmax_parameter_from_difficulty(int difficulty) -> std::optional<double>
     {
         assert(difficulty >= 0);
         switch (difficulty)
@@ -174,104 +224,110 @@ namespace
             return std::nullopt;
         }
     }
-
-    [[maybe_unused]] auto extract_pv_line(TranspositionTable& table, Position p)
-        -> std::vector<Move>
-    {
-        auto moves = std::vector<Move>{};
-
-        while (true)
-        {
-            auto const [value, was_found] = table.lookup(p.friends(), p.enemies());
-            if (!was_found || value->type != NodeType::Pv)
-                break;
-
-            auto const move = value->recommendation.move.to_standard_move();
-
-            if (!move.has_value())
-                break;
-            moves.push_back(*move);
-            p = apply_move(*move, p);
-        }
-
-        return moves;
-    }
 }  // namespace
 
-static auto table = TranspositionTable{};
-static auto rng = std::minstd_rand{100};
-
-auto recommend_move(Position const& position, int difficulty) -> MoveRecommendation
+auto analyze_position_with_ai_difficulty_level(Position const& position, int ai_level)
+    -> PositionAnalysis
 {
-    table.reset();
-#ifdef DIAGNOSTICS
-    diagnostics = {};
-#endif
+    auto const depth = depth_from_difficulty(ai_level);
+    auto const softmax = softmax_parameter_from_difficulty(ai_level);
 
-    auto result = MoveRecommendation{};
-
-    auto const max_depth = depth_from_difficulty(difficulty);
-    auto const randomness = randomness_from_difficulty(difficulty);
-
-    if (!randomness)
+    if (softmax.has_value())
     {
-        auto internal = InternalMoveRecommendation{};
-        for (auto depth = 1; depth <= max_depth; ++depth)
-        {
-            auto searcher = Searcher(position.friends(), position.enemies(), depth, &table);
-            internal = searcher.search();
-        }
-        result = internal.to_standard_move_recommendation();
+        auto const moves = analyze_available_moves(position, depth);
+        return select_analysis_with_softmax(moves, softmax.value());
     }
     else
     {
-        auto results = std::vector<MoveRecommendation>{};
+        return analyze_position(position, depth);
+    }
+}
 
-        for (auto move : list_moves(position))
+struct GameAnalyzer::Impl
+{
+    Impl() = default;
+
+    bool is_analyzing{};
+    TranspositionTable transposition_table{};
+    Position position{};
+    InternalMoveRecommendation best_recommendation_so_far{};
+    int current_depth{};
+    int max_depth{100};
+    std::function<void(GameAnalyzer&)> report_callback{};
+    bool stop_requested{};
+};
+
+GameAnalyzer::GameAnalyzer() : impl_{std::make_unique<Impl>()}
+{}
+
+auto GameAnalyzer::analyze_position(Position position) -> void
+{
+    if (impl_->is_analyzing)
+        return;
+
+    impl_->stop_requested = false;
+    impl_->is_analyzing = true;
+    impl_->transposition_table.reset();
+    impl_->best_recommendation_so_far = InternalMoveRecommendation{};
+    impl_->current_depth = 0;
+    impl_->position = position;
+
+    for (; impl_->current_depth <= impl_->max_depth; ++impl_->current_depth)
+    {
+        auto searcher =
+            Searcher(impl_->current_depth, &impl_->transposition_table, &impl_->stop_requested);
+
+        auto const recommendation =
+            searcher.search(impl_->position.friends(), impl_->position.enemies());
+
+        if (impl_->stop_requested)
         {
-            auto const new_pos = apply_move(move, position);
-
-            auto internal = InternalMoveRecommendation{};
-            for (auto depth = 0; depth <= max_depth - 1; ++depth)
-            {
-                auto searcher = Searcher(new_pos.friends(), new_pos.enemies(), depth, &table);
-                internal = searcher.search();
-            }
-
-            results.push_back({move, -internal.score});
+            // Recommendation is incomplete
+            if (recommendation.score > impl_->best_recommendation_so_far.score)
+                impl_->best_recommendation_so_far = recommendation;
+            break;
         }
 
-        auto weights = std::vector<double>(results.size());
-        auto get_weight = [&](auto const& r) { return std::exp(*randomness * 0.1 * r.score); };
-        std::transform(results.begin(), results.end(), weights.begin(), get_weight);
+        impl_->best_recommendation_so_far = recommendation;
 
-        auto dist = std::discrete_distribution<std::size_t>(weights.begin(), weights.end());
-        auto const index = dist(rng);
-        result = results[index];
+        if (impl_->report_callback)
+            impl_->report_callback(*this);
     }
 
-#ifdef DIAGNOSTICS
-    {
-        auto pv = extract_pv_line(table, position.friends(), position.enemies());
-        std::cout << fmt::format("Pv: [{}]\n", fmt::join(pv.begin(), pv.end(), ", "));
-    }
-#endif
-
-#ifdef DIAGNOSTICS
-    std::cout << diagnostics.to_string() << '\n';
-#endif
-
-    return result;
+    impl_->is_analyzing = false;
 }
 
-auto evaluate_position(Position const& position) -> ScoreType
+auto GameAnalyzer::stop_analysis() -> void
 {
-    return recommend_move(position).score;
+    impl_->stop_requested = true;
 }
 
-auto normalize_score(ScoreType const score, Player const player) -> ScoreType
+auto GameAnalyzer::is_analysis_ongoing() const -> bool
 {
-    return player == Player::Black ? -score : score;
+    return impl_->is_analyzing;
 }
+
+auto GameAnalyzer::set_max_depth(int max) -> void
+{
+    impl_->max_depth = max;
+}
+
+auto GameAnalyzer::set_report_callback(std::function<void(GameAnalyzer&)> f) -> void
+{
+    impl_->report_callback = std::move(f);
+}
+
+auto GameAnalyzer::best_analysis_so_far() -> PositionAnalysis
+{
+    return make_analysis(
+        impl_->position, impl_->best_recommendation_so_far, impl_->transposition_table);
+}
+
+auto GameAnalyzer::current_depth() const -> int
+{
+    return impl_->current_depth;
+}
+
+GameAnalyzer::~GameAnalyzer() = default;
 
 }  // namespace rock

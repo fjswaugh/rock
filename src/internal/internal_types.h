@@ -58,12 +58,12 @@ struct InternalMoveRecommendation
 {
     InternalMove move;
     ScoreType score;
-
-    auto to_standard_move_recommendation() const -> MoveRecommendation
-    {
-        return {move.to_standard_move(), score};
-    }
 };
+
+struct TranspositionTable;
+auto make_analysis(Position const&, InternalMoveRecommendation const&) -> PositionAnalysis;
+auto make_analysis(Position const&, InternalMoveRecommendation const&, TranspositionTable const&)
+    -> PositionAnalysis;
 
 /**
  * The purpose of `InternalMoveList` is to provide an efficient way to store generated moves.

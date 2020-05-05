@@ -10,6 +10,7 @@ add_library(rock
     internal/transposition_table.h
     internal/diagnostics.h
     internal/internal_types.h
+    internal/internal_types.cpp
     internal/search.h
     internal/move_generation.h
     internal/evaluate.h

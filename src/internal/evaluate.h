@@ -61,6 +61,8 @@ inline auto evaluate_leaf_position(
         res -= value * static_cast<ScoreType>(pop_count(positions & enemies));
     }
 
+    res += 20;
+
     return res;
 }
 

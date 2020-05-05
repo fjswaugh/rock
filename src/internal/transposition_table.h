@@ -1,18 +1,14 @@
 #pragma once
 
+#include "bit_operations.h"
 #include "diagnostics.h"
 #include "internal_types.h"
 #include "rock/types.h"
 #include <absl/hash/hash.h>
 
-#ifdef NO_USE_CUSTOM_TT
-#include <absl/container/flat_hash_map.h>
-#endif
-
 namespace rock::internal
 {
 
-#ifndef NO_USE_CUSTOM_TT
 inline auto compute_hash(u64 friends, u64 enemies) -> std::size_t
 {
     auto const key = std::tuple{friends, enemies};
@@ -47,9 +43,11 @@ public:
         NodeType type{};
     };
 
-    static constexpr auto size = std::size_t{20};
+    static constexpr auto default_size = std::size_t{16};
 
-    TranspositionTable() : data_(std::size_t{2} << size, Value{}) {}
+    explicit TranspositionTable(std::size_t size = default_size)
+        : size_{size}, data_(std::size_t{2} << size_, Value{})
+    {}
 
     auto reset() -> void { std::fill(data_.begin(), data_.end(), Value{}); }
 
@@ -59,9 +57,22 @@ public:
         bool was_found;
     };
 
+    struct ConstLookupResult
+    {
+        Value const* value;
+        bool was_found;
+    };
+
+    auto lookup(u64 friends, u64 enemies) const -> ConstLookupResult
+    {
+        auto const index = compute_hash(friends, enemies) % (std::size_t{2} << size_);
+        auto const* value = &data_[index];
+        return {value, value->matches(friends, enemies)};
+    }
+
     auto lookup(u64 friends, u64 enemies) -> LookupResult
     {
-        auto const index = compute_hash(friends, enemies) % (std::size_t{2} << size);
+        auto const index = compute_hash(friends, enemies) % (std::size_t{2} << size_);
         auto* value = &data_[index];
 #ifdef DIAGNOSTICS
         bool const is_collision = (value->friends_ != 0 || value->enemies_ != 0) &&
@@ -72,42 +83,8 @@ public:
     }
 
 private:
+    std::size_t size_{};
     std::vector<Value> data_{};
 };
-#else
-struct TranspositionTable
-{
-public:
-    using Key = std::pair<u64, u64>;
-
-    struct Value
-    {
-        constexpr auto set_key(u64, u64) -> void {}
-
-        InternalMoveRecommendation recommendation{};
-        int depth{};
-        NodeType type{};
-    };
-
-    TranspositionTable() = default;
-
-    auto reset() -> void { data_ = {}; }
-
-    struct LookupResult
-    {
-        Value* value;
-        bool was_found;
-    };
-
-    auto lookup(u64 friends, u64 enemies) -> LookupResult
-    {
-        auto const [it, did_insert] = data_.try_emplace(std::pair{friends, enemies});
-        return {&it->second, !did_insert};
-    }
-
-private:
-    absl::flat_hash_map<Key, Value> data_{};
-};
-#endif
 
 }  // namespace rock::internal

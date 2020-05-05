@@ -9,24 +9,16 @@ namespace rock::internal
 
 struct Searcher
 {
-    explicit Searcher(
-        BitBoard friends,
-        BitBoard enemies,
-        int depth,
-        TranspositionTable* table,
-        ScoreType alpha = -big,
-        ScoreType beta = big,
-        InternalMove killer_move = {})
-        : friends_{friends},
-          enemies_{enemies},
-          depth_{depth},
-          alpha_{alpha},
-          beta_{beta},
-          table_{table},
-          killer_move_{killer_move}
+    explicit Searcher(int depth, TranspositionTable* table, bool const* stop_token = nullptr)
+        : depth_{depth}, table_{table}, stop_token_{stop_token}
     {}
 
-    auto search() -> InternalMoveRecommendation;
+    auto search(
+        BitBoard friends,
+        BitBoard enemies,
+        ScoreType alpha = -big,
+        ScoreType beta = big,
+        InternalMove killer_move = {}) -> InternalMoveRecommendation;
 
 private:
     // Internal functions
@@ -37,12 +29,15 @@ private:
     auto add_to_transposition_table() -> void;
 
     // Input arguments
+    int depth_;
+    TranspositionTable* table_;
+    bool const* stop_token_;
+
+    // Search arguments
     BitBoard friends_;
     BitBoard enemies_;
-    int depth_;
     ScoreType alpha_;
     ScoreType beta_;
-    TranspositionTable* table_;
     InternalMove killer_move_;
 
     // Internal data
@@ -60,27 +55,37 @@ inline auto
 Searcher::search_next(BitBoard friends, BitBoard enemies, ScoreType alpha, ScoreType beta)
     -> InternalMoveRecommendation
 {
-    auto searcher = Searcher(friends, enemies, depth_ - 1, table_, alpha, beta, next_killer_move_);
-    return searcher.search();
+    // Don't incur the cost of checking the token on small depths
+    auto const stop_token = depth_ < 5 ? nullptr : stop_token_;
+
+    auto searcher = Searcher(depth_ - 1, table_, stop_token);
+    return searcher.search(friends, enemies, alpha, beta, next_killer_move_);
 }
 
-inline auto Searcher::search() -> InternalMoveRecommendation
+inline auto Searcher::search(
+    BitBoard friends, BitBoard enemies, ScoreType alpha, ScoreType beta, InternalMove killer_move)
+    -> InternalMoveRecommendation
 {
+    friends_ = friends;
+    enemies_ = enemies;
+    alpha_ = alpha;
+    beta_ = beta;
+    killer_move_ = killer_move;
+
     if (depth_ == 0)
-    {
         return {InternalMove{}, evaluate_leaf_position(friends_, enemies_)};
-    }
-    else
-    {
-        main_search();
-        DIAGNOSTICS_UPDATE_AFTER_SEARCH(best_result_, move_count_);
-        add_to_transposition_table();
-        return best_result_;
-    }
+
+    main_search();
+    DIAGNOSTICS_UPDATE_AFTER_SEARCH(best_result_, move_count_);
+    add_to_transposition_table();
+    return best_result_;
 }
 
 inline auto Searcher::process_move(InternalMove move) -> void
 {
+    if (stop_token_ && move_count_ > 0 && *stop_token_)
+        return;
+
     auto friends_copy = friends_;
     auto enemies_copy = enemies_;
     apply_move_low_level(move.from_board, move.to_board, &friends_copy, &enemies_copy);
@@ -98,7 +103,7 @@ inline auto Searcher::process_move(InternalMove move) -> void
 
         if (must_re_search)
         {
-            recommendation = search_next(enemies_copy, friends_copy, -beta_, -score);
+            recommendation = search_next(enemies_copy, friends_copy, -beta_, -alpha_);
             score = -recommendation.score;
         }
 

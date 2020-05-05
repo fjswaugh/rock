@@ -3,6 +3,7 @@
 #include "common.h"
 #include <cassert>
 #include <optional>
+#include <vector>
 
 namespace rock
 {
@@ -159,6 +160,11 @@ struct Move
     {
         return m1.from == m2.from && m1.to == m2.to;
     }
+
+    constexpr auto friend operator<(Move m1, Move m2) -> bool
+    {
+        return (m1.from == m2.from) ? (m1.to < m2.to) : (m1.from < m2.from);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -175,9 +181,10 @@ enum struct GameOutcome
 
 using ScoreType = std::int64_t;
 
-struct MoveRecommendation
+struct PositionAnalysis
 {
-    std::optional<Move> move;
+    std::optional<Move> best_move;
+    std::vector<Move> principal_variation;
     ScoreType score;
 };
 
