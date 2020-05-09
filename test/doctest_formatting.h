@@ -6,18 +6,6 @@
 #include <vector>
 #include <type_traits>
 
-namespace rock::detail
-{
-
-template <typename T>
-struct is_iterable : std::false_type
-{};
-
-template <typename T>
-constexpr bool is_iterable_v = is_iterable<T>::value;
-
-}  // namespace rock::detail
-
 namespace doctest
 {
 

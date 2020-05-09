@@ -112,7 +112,7 @@ auto get_game_outcome(Position const& position) -> GameOutcome
     return GameOutcome::Ongoing;
 }
 
-static auto table = TranspositionTable(18);
+static auto table = TranspositionTable(19);
 
 auto analyze_position(Position const& position, int max_depth) -> PositionAnalysis
 {
