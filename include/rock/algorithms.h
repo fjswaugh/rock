@@ -20,21 +20,21 @@
 namespace rock
 {
 
-auto apply_move(Move, Board, Player) -> Board;
-auto apply_move(Move, Position) -> Position;
+ROCK_API auto apply_move(Move, Board, Player) -> Board;
+ROCK_API auto apply_move(Move, Position) -> Position;
 
-auto list_moves(Position const&) -> std::vector<Move>;
-auto count_moves(Position const&, int level = 1) -> std::size_t;
-auto is_move_legal(Move, Position const&) -> bool;
-auto list_legal_destinations(BoardCoordinates from, Position const&)
+ROCK_API auto list_moves(Position const&) -> std::vector<Move>;
+ROCK_API auto count_moves(Position const&, int level = 1) -> std::size_t;
+ROCK_API auto is_move_legal(Move, Position const&) -> bool;
+ROCK_API auto list_legal_destinations(BoardCoordinates from, Position const&)
     -> std::vector<BoardCoordinates>;
 
-auto get_game_outcome(Position const&) -> GameOutcome;
+ROCK_API auto get_game_outcome(Position const&) -> GameOutcome;
 
 /**
  * Analyze a position up to a fixed depth
  */
-auto analyze_position(Position const&, int depth) -> PositionAnalysis;
+ROCK_API auto analyze_position(Position const&, int depth) -> PositionAnalysis;
 
 /**
  * Separately analyze each available move
@@ -42,7 +42,7 @@ auto analyze_position(Position const&, int depth) -> PositionAnalysis;
  * This will probably take considerably longer than only analyzing the root
  * node, as an accurate score will be determined for each move.
  */
-auto analyze_available_moves(Position const&, int depth) -> std::map<Move, PositionAnalysis>;
+ROCK_API auto analyze_available_moves(Position const&, int depth) -> std::map<Move, PositionAnalysis>;
 
 /**
  * Create a position analysis based on the input using a soft max function to
@@ -51,7 +51,7 @@ auto analyze_available_moves(Position const&, int depth) -> std::map<Move, Posit
  * This can be controlled through the parameter - 0.0 will return a random move,
  * inf will always return the best move.
  */
-auto select_analysis_with_softmax(
+ROCK_API auto select_analysis_with_softmax(
     std::map<Move, PositionAnalysis> const&, double softmax_parameter = 1.0) -> PositionAnalysis;
 
 /**
@@ -62,13 +62,14 @@ auto select_analysis_with_softmax(
  * will increase. Beware that higher difficulty levels (above 10) will begin to
  * take longer to execute.
  */
-auto analyze_position_with_ai_difficulty_level(Position const&, int ai_level) -> PositionAnalysis;
+ROCK_API auto analyze_position_with_ai_difficulty_level(Position const&, int ai_level)
+    -> PositionAnalysis;
 
 /**
  * Crude initial attempt at an object through which the analysis of a position
  * can be controlled.
  */
-struct GameAnalyzer
+struct ROCK_API GameAnalyzer
 {
     explicit GameAnalyzer();
 

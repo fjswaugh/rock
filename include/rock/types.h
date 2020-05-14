@@ -12,18 +12,18 @@ namespace rock
 // Player
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-enum struct Player : bool
+enum struct ROCK_API Player : bool
 {
     White,
     Black,
 };
 
-constexpr auto opponent_of(Player p) -> Player
+ROCK_API constexpr auto opponent_of(Player p) -> Player
 {
     return Player{!static_cast<bool>(p)};
 }
 
-constexpr auto operator!(Player p) -> Player
+ROCK_API constexpr auto operator!(Player p) -> Player
 {
     return opponent_of(p);
 }
@@ -32,9 +32,9 @@ constexpr auto operator!(Player p) -> Player
 // Board
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct BitBoard;
+struct ROCK_API BitBoard;
 
-struct BoardCoordinates
+struct ROCK_API BoardCoordinates
 {
     using underlying_type = u8;
 
@@ -82,7 +82,7 @@ private:
     underlying_type data_{};
 };
 
-struct BitBoard
+struct ROCK_API BitBoard
 {
     constexpr BitBoard() = default;
     constexpr BitBoard(u64 data) : data{data} {}
@@ -107,7 +107,7 @@ constexpr auto BoardCoordinates::bit_board() const -> BitBoard
     return BitBoard{u64{1} << u64{data_}};
 }
 
-struct Board
+struct ROCK_API Board
 {
     constexpr Board() = default;
     constexpr Board(BitBoard white, BitBoard black) : boards_{white, black} {}
@@ -126,7 +126,7 @@ private:
 // Position
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct Position
+struct ROCK_API Position
 {
     constexpr Position() = default;
     constexpr Position(Board const& board, Player player_to_move)
@@ -151,7 +151,7 @@ private:
 // Move
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct Move
+struct ROCK_API Move
 {
     BoardCoordinates from;
     BoardCoordinates to;
@@ -171,7 +171,7 @@ struct Move
 // GameOutcome
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-enum struct GameOutcome
+enum struct ROCK_API GameOutcome
 {
     Ongoing = 0,
     WhiteWins,
@@ -181,7 +181,7 @@ enum struct GameOutcome
 
 using ScoreType = std::int64_t;
 
-struct PositionAnalysis
+struct ROCK_API PositionAnalysis
 {
     std::optional<Move> best_move;
     std::vector<Move> principal_variation;
