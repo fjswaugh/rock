@@ -7,7 +7,7 @@
 namespace rock
 {
 
-struct Game
+struct ROCK_API Game
 {
     Game();
 

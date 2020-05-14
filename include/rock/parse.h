@@ -12,29 +12,29 @@ namespace rock
  * not correct, will return something (maybe default-constructed object, maybe
  * partially-filled).
  */
-constexpr auto parse_literal_player(std::string_view) -> Player;
-constexpr auto parse_literal_board(std::string_view) -> Board;
-constexpr auto parse_literal_bit_board(std::string_view) -> BitBoard;
+ROCK_API constexpr auto parse_literal_player(std::string_view) -> Player;
+ROCK_API constexpr auto parse_literal_board(std::string_view) -> Board;
+ROCK_API constexpr auto parse_literal_bit_board(std::string_view) -> BitBoard;
 
 /**
  * Non-constexpr parse functions with simple error handling: either the object
  * can be parsed or not. Not very composable.
  */
-auto parse_player(std::string_view) -> std::optional<Player>;
-auto parse_board_coordinates(std::string_view) -> std::optional<BoardCoordinates>;
-auto parse_move(std::string_view) -> std::optional<Move>;
+ROCK_API auto parse_player(std::string_view) -> std::optional<Player>;
+ROCK_API auto parse_board_coordinates(std::string_view) -> std::optional<BoardCoordinates>;
+ROCK_API auto parse_move(std::string_view) -> std::optional<Move>;
 
 namespace literals
 {
-    constexpr auto operator ""_player(char const* str, std::size_t size) -> Player
+    ROCK_API constexpr auto operator ""_player(char const* str, std::size_t size) -> Player
     {
         return parse_literal_player({str, size});
     }
-    constexpr auto operator ""_board(char const* str, std::size_t size) -> Board
+    ROCK_API constexpr auto operator ""_board(char const* str, std::size_t size) -> Board
     {
         return parse_literal_board({str, size});
     }
-    constexpr auto operator ""_bit_board(char const* str, std::size_t size) -> BitBoard
+    ROCK_API constexpr auto operator ""_bit_board(char const* str, std::size_t size) -> BitBoard
     {
         return parse_literal_bit_board({str, size});
     }
