@@ -2,6 +2,7 @@
 
 #include "internal_types.h"
 #include "move_generation.h"
+#include "rock/parse.h"
 
 namespace rock::internal
 {
@@ -41,10 +42,37 @@ inline auto are_pieces_all_together(BitBoard const board) -> bool
     return (board ^ blob) == 0;
 }
 
+inline constexpr BitBoard central_boards[] = {
+    parse_literal_bit_board("        "
+                            "        "
+                            "        "
+                            "   xx   "
+                            "   xx   "
+                            "        "
+                            "        "
+                            "        "),
+    parse_literal_bit_board("        "
+                            "        "
+                            "  xxxx  "
+                            "  xxxx  "
+                            "  xxxx  "
+                            "  xxxx  "
+                            "        "
+                            "        "),
+    parse_literal_bit_board("        "
+                            " xxxxxx "
+                            " xxxxxx "
+                            " xxxxxx "
+                            " xxxxxx "
+                            " xxxxxx "
+                            " xxxxxx "
+                            "        "),
+};
+
 inline constexpr std::pair<BitBoard, ScoreType> important_positions[] = {
-    {all_circles.data[BoardCoordinates{3, 3}.data()][3], 10},
-    {all_circles.data[BoardCoordinates{3, 3}.data()][2], 10},
-    {all_circles.data[BoardCoordinates{3, 3}.data()][1], 10},
+    {central_boards[0], 10},
+    {central_boards[1], 10},
+    {central_boards[2], 10},
 };
 
 inline auto evaluate_leaf_position(
