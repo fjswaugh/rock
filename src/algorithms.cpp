@@ -114,7 +114,7 @@ auto get_game_outcome(Position const& position) -> GameOutcome
 
 auto analyze_position(Position const& position, int max_depth) -> PositionAnalysis
 {
-    static auto table = TranspositionTable(18);
+    static auto table = TranspositionTable(19);
 
     table.reset();
 
