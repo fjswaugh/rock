@@ -4,35 +4,41 @@
 namespace rock::internal
 {
 
-namespace
+static auto extract_pv_line(Position p, TranspositionTable const& table) -> std::vector<Move>
 {
-    auto extract_pv_line(Position p, TranspositionTable const& table) -> std::vector<Move>
+    auto already_seen_positions = std::vector<Position>{};
+    auto moves = std::vector<Move>{};
+
+    while (true)
     {
-        auto moves = std::vector<Move>{};
-
-        while (true)
+        // Exit early if we encounter the same position twice
+        if (std::find(already_seen_positions.begin(), already_seen_positions.end(), p) !=
+            already_seen_positions.end())
         {
-            auto const [value, was_found] = table.lookup(p.friends(), p.enemies());
-            if (!was_found || value->type != NodeType::Pv)
-                break;
-
-            auto const move = value->recommendation.move.to_standard_move();
-
-            if (!move.has_value())
-                break;
-            moves.push_back(*move);
-
-            p = apply_move(*move, p);
+            break;
         }
 
-        return moves;
+        auto const [value, was_found] = table.lookup(p.friends(), p.enemies());
+        if (!was_found || value->type != NodeType::Pv)
+            break;
+
+        std::optional<Move> const recommended_move = value->recommendation.move.to_standard_move();
+        if (!recommended_move.has_value())
+            break;
+
+        moves.push_back(*recommended_move);
+        already_seen_positions.push_back(p);
+
+        p = apply_move(*recommended_move, p);
     }
 
-    auto normalize_score(ScoreType score, Player player) -> ScoreType
-    {
-        return player == Player::Black ? -score : score;
-    }
-}  // namespace
+    return moves;
+}
+
+static auto normalize_score(ScoreType score, Player player) -> ScoreType
+{
+    return player == Player::Black ? -score : score;
+}
 
 auto make_analysis(Position const& p, InternalMoveRecommendation const& r) -> PositionAnalysis
 {
