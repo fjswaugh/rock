@@ -4,15 +4,31 @@
 #include "diagnostics.h"
 #include "internal_types.h"
 #include "rock/types.h"
-#include <absl/hash/hash.h>
 
 namespace rock::internal
 {
 
-inline auto compute_hash(u64 friends, u64 enemies) -> std::size_t
+// Taken from:
+// https://stackoverflow.com/questions/664014/what-integer-hash-function-are-good-that-accepts-an-integer-hash-key
+// 
+// Which was in turn taken from split mix 64:
+// http://xorshift.di.unimi.it/splitmix64.c
+//
+// This article may be relevant:
+// https://zimbry.blogspot.com/2011/09/better-bit-mixing-improving-on.html
+inline auto compute_hash(u64 friends, u64 enemies) -> u64
 {
-    auto const key = std::tuple{friends, enemies};
-    return absl::Hash<decltype(key)>{}(key);
+    auto x = friends;
+    x = (x ^ (x >> 30)) * u64{0xbf58476d1ce4e5b9};
+    x = (x ^ (x >> 27)) * u64{0x94d049bb133111eb};
+    x = x ^ (x >> 31);
+
+    auto y = enemies;
+    y = (y ^ (y >> 30)) * u64{0xbf58476d1ce4e5b9};
+    y = (y ^ (y >> 27)) * u64{0x94d049bb133111eb};
+    y = y ^ (y >> 31);
+
+    return x ^ y;
 }
 
 struct TranspositionTable
