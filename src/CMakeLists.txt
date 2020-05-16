@@ -32,4 +32,4 @@ endif()
 
 target_include_directories(rock PUBLIC ../include PRIVATE .)
 target_compile_features(rock PUBLIC cxx_std_17)
-target_link_libraries(rock PUBLIC fmt::fmt PRIVATE absl::hash absl::flat_hash_map)
+target_link_libraries(rock PUBLIC fmt::fmt)

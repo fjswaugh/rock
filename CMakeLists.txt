@@ -17,10 +17,6 @@ option(ROCK_TEST                    "Generate tests"                            
 option(ROCK_RECOMMENDED_RELEASE_OPT "Use recommended optimization flags in Release" ON)
 option(ROCK_ARCHITECTURE_OPT        "Use architecture-specific optimizations"       OFF)
 
-# Set these for Abseil
-set(CMAKE_CXX_STANDARD 17)
-set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-
 ####################################################################################################
 # Compiler flags to be appended to target
 ####################################################################################################
@@ -63,12 +59,6 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/onqtam/doctest.git
     GIT_TAG        2.3.7)
 FetchContent_MakeAvailable(doctest)
-
-FetchContent_Declare(
-    abseil
-    GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
-    GIT_TAG        20200225.2)
-FetchContent_MakeAvailable(abseil)
 
 ####################################################################################################
 # Subdirectories

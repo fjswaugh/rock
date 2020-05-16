@@ -99,6 +99,11 @@ struct ROCK_API BitBoard
     auto count() const -> std::size_t;
     auto coordinates() const -> BoardCoordinates;
 
+    constexpr friend auto operator==(BitBoard b1, BitBoard b2) -> bool
+    {
+        return b1.data == b2.data;
+    }
+
     u64 data{};
 };
 
@@ -117,6 +122,11 @@ struct ROCK_API Board
 
     constexpr auto pieces_for(Player p) const -> BitBoard { return boards_[static_cast<bool>(p)]; }
     constexpr auto operator[](Player p) const -> BitBoard { return boards_[static_cast<bool>(p)]; }
+
+    constexpr friend auto operator==(Board const& b1, Board const& b2) -> bool
+    {
+        return b1.boards_[0] == b2.boards_[0] && b1.boards_[1] == b2.boards_[1];
+    }
 
 private:
     BitBoard boards_[2];
@@ -141,6 +151,11 @@ struct ROCK_API Position
 
     constexpr auto set_board(Board const& b) -> void { board_ = b; }
     constexpr auto set_player_to_move(Player p) -> void { player_to_move_ = p; }
+
+    constexpr friend auto operator==(Position const& p1, Position const& p2) -> bool
+    {
+        return p1.board_ == p2.board_ && p1.player_to_move_ == p2.player_to_move_;
+    }
 
 private:
     Board board_{};
