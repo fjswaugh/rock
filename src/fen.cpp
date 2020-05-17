@@ -66,7 +66,7 @@ auto parse_fen_to_board(std::string_view fen) -> std::optional<Board>
         }
 
         if (x < 0 || x >= 8 || y < 0 || y >= 8)
-            return std::nullopt;
+            break;
 
         if (ch == 'P')
             res[Player::White].set_bit({x++, y});
@@ -75,8 +75,11 @@ auto parse_fen_to_board(std::string_view fen) -> std::optional<Board>
         else if (ch >= '0' && ch <= '9')
             x += ch - '0';
         else
-            return std::nullopt;
+            continue;
     }
+
+    if (x != 8 || y != 0)
+        return std::nullopt;
 
     return res;
 }
