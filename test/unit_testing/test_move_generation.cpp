@@ -39,7 +39,7 @@ TEST_CASE("rock::count_moves")
     // All other results in this function I have manually verified, but the
     // following one is just the output of the program (at least we can see if
     // it ever changes)
-    CHECK(rock::count_moves(rock::starting_position, 5) == 55'963'132);
+    CHECK(rock::count_moves(rock::starting_position, 4) == 1'563'208);
 }
 
 TEST_CASE("rock::list_legal_destinations")
