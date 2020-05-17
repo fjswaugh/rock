@@ -146,7 +146,7 @@ inline auto Searcher::main_search() -> void
 {
     DIAGNOSTICS_UPDATE_BEFORE_SEARCH();
 
-    best_result_ = InternalMoveRecommendation{InternalMove{}, -big};
+    best_result_ = InternalMoveRecommendation{InternalMove{}, -2 * big};
     node_type_ = NodeType::All;
 
     // Check the transposition table before checking if the game is over
