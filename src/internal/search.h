@@ -186,13 +186,15 @@ inline auto Searcher::main_search() -> void
 
     // if game is over, return early
     {
-        bool const has_player_won = are_pieces_all_together(friends_);
-        bool const has_player_lost = are_pieces_all_together(enemies_);
-        if (moves.size() == 0 || has_player_won || has_player_lost)
+        bool const are_friends_together = are_pieces_all_together(friends_);
+        bool const are_enemies_together = are_pieces_all_together(enemies_);
+        bool const no_legal_moves = moves.size() == 0;
+
+        if (no_legal_moves || are_friends_together || are_enemies_together)
         {
             best_result_.move = InternalMove{};
-            best_result_.score =
-                evaluate_leaf_position(friends_, enemies_, has_player_won, has_player_lost);
+            best_result_.score = evaluate_leaf_position(
+                friends_, enemies_, are_friends_together, are_enemies_together, no_legal_moves);
             return;
         }
     }

@@ -31,6 +31,51 @@ using array_ref = T const (&)[N];
 inline constexpr auto all_circles = make_all_circles();
 inline constexpr auto all_directions = make_all_directions();
 
+inline auto has_no_legal_moves(BitBoard const friends, BitBoard const enemies) -> bool
+{
+    auto pieces_to_process = friends;
+
+    while (pieces_to_process)
+    {
+        u64 const from_coordinate = coordinates_from_bit_board(pieces_to_process);
+        u64 const from_board = bit_board_from_coordinates(from_coordinate);
+
+        auto const all_pieces = friends | enemies;
+        auto const positive = (~u64{}) << from_coordinate;
+        auto const negative = ~positive;
+
+        array_ref<u64, 4> directions = all_directions.data[from_coordinate];
+        array_ref<u64, 8> circles = all_circles.data[from_coordinate];
+
+        for (u64 const dir : directions)
+        {
+            auto const possible_distance = pop_count(dir & all_pieces);
+
+            u64 const circle = circles[possible_distance - 1];
+            u64 const circle_edge = circles[std::min(u64{7}, possible_distance)] ^ circle;
+
+            auto const d_p = dir & positive;
+            auto const d_n = dir & negative;
+            auto const ce_d_p = circle_edge & d_p;
+            auto const ce_d_n = circle_edge & d_n;
+            auto const c_d_p = circle & d_p;
+            auto const c_d_n = circle & d_n;
+
+            assert(pop_count(circle_edge & dir & positive) <= 1);
+
+            if (ce_d_p && (enemies & c_d_p) == u64{} && (friends & ce_d_p) == u64{})
+                return false;
+
+            if (ce_d_n && (enemies & c_d_n) == u64{} && (friends & ce_d_n) == u64{})
+                return false;
+        }
+
+        pieces_to_process ^= from_board;
+    }
+
+    return true;
+}
+
 inline auto generate_legal_destinations(
     u64 const from_coordinate, BitBoard const friends, BitBoard const enemies) -> u64
 {

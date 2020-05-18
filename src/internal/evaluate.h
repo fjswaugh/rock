@@ -76,12 +76,20 @@ inline constexpr std::pair<BitBoard, ScoreType> important_positions[] = {
 };
 
 inline auto evaluate_leaf_position(
-    BitBoard friends, BitBoard enemies, bool has_player_won, bool has_player_lost) -> ScoreType
+    BitBoard friends,
+    BitBoard enemies,
+    bool are_friends_together,
+    bool are_enemies_together,
+    bool no_legal_moves) -> ScoreType
 {
-    auto res = ScoreType{};
+    if (are_friends_together && !are_enemies_together)
+        return big;
+    if (are_enemies_together && !are_friends_together)
+        return -big;
+    if ((are_friends_together && are_enemies_together) || no_legal_moves)
+        return 0;
 
-    if (has_player_lost || has_player_won)
-        res += big * static_cast<ScoreType>(has_player_won - has_player_lost);
+    auto res = ScoreType{};
 
     for (auto const& [positions, value] : important_positions)
     {
@@ -96,10 +104,12 @@ inline auto evaluate_leaf_position(
 
 inline auto evaluate_leaf_position(BitBoard friends, BitBoard enemies) -> ScoreType
 {
-    bool const has_player_won = are_pieces_all_together(friends);
-    bool const has_player_lost = are_pieces_all_together(enemies);
+    bool const are_friends_together = are_pieces_all_together(friends);
+    bool const are_enemies_together = are_pieces_all_together(enemies);
+    bool const no_legal_moves = has_no_legal_moves(friends, enemies);
 
-    return evaluate_leaf_position(friends, enemies, has_player_won, has_player_lost);
+    return evaluate_leaf_position(
+        friends, enemies, are_friends_together, are_enemies_together, no_legal_moves);
 }
 
 }  // namespace rock::internal

@@ -107,7 +107,7 @@ auto get_game_outcome(Position const& position) -> GameOutcome
         return GameOutcome::WhiteWins;
     if (b && !w)
         return GameOutcome::BlackWins;
-    if ((w && b) || count_moves(position) == 0)
+    if ((w && b) || has_no_legal_moves(position.friends(), position.enemies()))
         return GameOutcome::Draw;
     return GameOutcome::Ongoing;
 }
