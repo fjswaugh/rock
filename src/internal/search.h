@@ -185,6 +185,8 @@ inline auto Searcher::main_search() -> void
     auto moves = generate_moves(friends_, enemies_);
 
     // if game is over, return early
+    // TODO: we should probably do this before trying anything else, no? In case
+    // the killer move is legal but takes us away from a winning position.
     {
         bool const are_friends_together = are_pieces_all_together(friends_);
         bool const are_enemies_together = are_pieces_all_together(enemies_);

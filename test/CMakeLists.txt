@@ -1,3 +1,9 @@
+FetchContent_Declare(
+    doctest
+    GIT_REPOSITORY https://github.com/onqtam/doctest.git
+    GIT_TAG        2.3.7)
+FetchContent_MakeAvailable(doctest)
+
 add_executable(rock_test
     example_boards.h
     doctest_formatting.h

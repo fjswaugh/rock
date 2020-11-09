@@ -54,17 +54,12 @@ FetchContent_Declare(
     GIT_TAG        5.3.0)
 FetchContent_MakeAvailable(fmtlib)
 
-FetchContent_Declare(
-    doctest
-    GIT_REPOSITORY https://github.com/onqtam/doctest.git
-    GIT_TAG        2.3.7)
-FetchContent_MakeAvailable(doctest)
-
 ####################################################################################################
 # Subdirectories
 ####################################################################################################
 
 add_subdirectory(src)
+add_subdirectory(apps)
 
 if (ROCK_TEST)
     include(CTest)
